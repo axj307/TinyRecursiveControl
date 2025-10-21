@@ -1,0 +1,30 @@
+# Core dependencies
+torch>=2.0.0
+numpy<2.0
+scipy
+matplotlib
+tqdm
+pyyaml
+
+# TinyRecursiveModels dependencies
+einops
+coolname
+pydantic
+argdantic
+omegaconf
+hydra-core
+huggingface_hub
+packaging
+numba
+
+# Control-specific dependencies
+control  # Python Control Systems Library for LQR
+wandb  # For experiment tracking
+
+# Optional but useful
+jupyter
+ipykernel
+seaborn  # For better visualizations
+
+# Note: Install PyTorch with CUDA support separately if needed:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

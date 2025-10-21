@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data files (large training/test datasets)
+data/**/*.npz
+data/**/*.pkl
+data/**/*.hdf5
+data/**/*.h5
+
+# Model checkpoints and training outputs
+outputs/**/*.pt
+outputs/**/*.pth
+outputs/**/*.ckpt
+outputs/**/*.png
+outputs/**/*.pdf
+*.pt
+*.pth
+*.ckpt
+
+# Keep directory structure
+!data/.gitkeep
+!outputs/.gitkeep
+
+# Training logs and temporary files
+*.log
+logs/
+runs/
+wandb/
+mlruns/
+*.tmp
+
+# Environment files
+.env
+.env.local
+
+# Compiled files
+*.pyc
+*.pyo
+*.so
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
