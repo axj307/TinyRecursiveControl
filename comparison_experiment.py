@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 def double_integrator_dynamics(state_batch, control_batch, dt=0.33):
-    """Simulate double integrator."""
+    """Simulate double integrator with correct physics.
+
+    For double integrator: acceleration -> velocity -> position
+    Using exact integration: pos = pos + vel*dt + 0.5*acc*dt²
+    """
     batch_size = state_batch.shape[0]
     horizon = control_batch.shape[1]
 
@@ -41,8 +45,9 @@ def double_integrator_dynamics(state_batch, control_batch, dt=0.33):
         pos, vel = state_batch[b]
         for t in range(horizon):
             acc = control_batch[b, t, 0]
+            # Exact integration for constant acceleration over timestep
+            pos = pos + vel * dt + 0.5 * acc * dt * dt
             vel = vel + acc * dt
-            pos = pos + vel * dt
         final_states.append(torch.tensor([pos, vel]))
 
     return torch.stack(final_states).to(state_batch.device)

@@ -33,7 +33,7 @@ class DoubleIntegratorLQR:
         dt: float = 0.33,           # Time step
         Q: np.ndarray = None,        # State cost matrix
         R: np.ndarray = None,        # Control cost matrix
-        control_bounds: float = 4.0,  # Control limits
+        control_bounds: float = 8.0,  # Control limits (increased from 4.0 to reduce saturation)
     ):
         self.dt = dt
 
@@ -84,11 +84,58 @@ class DoubleIntegratorLQR:
 
         return Ad, Bd
 
+    def _solve_finite_horizon_lqr(self, num_steps: int, Q_terminal: np.ndarray = None, terminal_weight: float = None):
+        """
+        Solve finite-horizon LQR with terminal cost.
+
+        Solves the discrete-time Riccati equation backwards to get time-varying gains.
+
+        Args:
+            num_steps: Number of control steps
+            Q_terminal: Terminal cost matrix (overrides terminal_weight if provided)
+            terminal_weight: Scalar weight for terminal cost (Q_terminal = weight * Q)
+
+        Returns:
+            K_gains: List of feedback gains K[t] for each timestep (length num_steps)
+        """
+        if Q_terminal is None:
+            if terminal_weight is None:
+                terminal_weight = 100.0  # Default
+            # Strong terminal cost to prioritize reaching target
+            Q_terminal = terminal_weight * self.Q
+
+        # Initialize with terminal cost
+        P = Q_terminal.copy()
+        K_gains = []
+
+        # Solve Riccati equation backwards
+        for t in range(num_steps - 1, -1, -1):
+            # Compute feedback gain at this timestep
+            # K[t] = (R + B'*P*B)^{-1} * B'*P*A
+            BtPB = self.Bd.T @ P @ self.Bd + self.R
+            BtPA = self.Bd.T @ P @ self.Ad
+            K_t = np.linalg.solve(BtPB, BtPA)
+
+            K_gains.append(K_t.copy())
+
+            # Update P for previous timestep
+            # P = Q + A'*P*A - A'*P*B*(R + B'*P*B)^{-1}*B'*P*A
+            AtPA = self.Ad.T @ P @ self.Ad
+            AtPB = self.Ad.T @ P @ self.Bd
+            P = self.Q + AtPA - AtPB @ K_t
+
+        # Reverse to get forward-time gains
+        K_gains.reverse()
+
+        return K_gains
+
     def generate_trajectory(
         self,
         initial_state: np.ndarray,
         target_state: np.ndarray,
         num_steps: int,
+        use_finite_horizon: bool = True,
+        terminal_weight: float = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Generate optimal LQR trajectory.
@@ -97,13 +144,15 @@ class DoubleIntegratorLQR:
             initial_state: Initial state [position, velocity]
             target_state: Target state [position, velocity]
             num_steps: Number of control steps
+            use_finite_horizon: If True, use finite-horizon LQR (recommended)
+            terminal_weight: Terminal cost weight (Q_terminal = weight * Q)
 
         Returns:
             states: State trajectory [num_steps+1, state_dim]
             controls: Control sequence [num_steps, control_dim]
             cost: Total LQR cost
         """
-        if self.K is None:
+        if self.K is None and not use_finite_horizon:
             raise RuntimeError("LQR gain not computed. Install 'control' package.")
 
         states = [initial_state.copy()]
@@ -112,10 +161,20 @@ class DoubleIntegratorLQR:
 
         current_state = initial_state.copy()
 
+        # Get time-varying gains for finite horizon
+        if use_finite_horizon:
+            K_gains = self._solve_finite_horizon_lqr(num_steps, terminal_weight=terminal_weight)
+
         for t in range(num_steps):
             # Compute control relative to target
             state_error = current_state - target_state
-            u = -self.K @ state_error
+
+            if use_finite_horizon:
+                # Use time-varying gain
+                u = -K_gains[t] @ state_error
+            else:
+                # Use steady-state gain (infinite horizon)
+                u = -self.K @ state_error
 
             # Clip to bounds
             u = np.clip(u, -self.control_bounds, self.control_bounds)
@@ -131,6 +190,12 @@ class DoubleIntegratorLQR:
             states.append(next_state.copy())
 
             current_state = next_state
+
+        # Add terminal cost
+        final_error = current_state - target_state
+        tw = terminal_weight if terminal_weight is not None else 100.0
+        terminal_cost = final_error.T @ (tw * self.Q) @ final_error
+        total_cost += terminal_cost
 
         states = np.array(states)
         controls = np.array(controls)
@@ -254,21 +319,78 @@ def main():
     parser.add_argument('--num_steps', type=int, default=15)
     parser.add_argument('--state_range_min', type=float, default=-2.0)
     parser.add_argument('--state_range_max', type=float, default=2.0)
+    parser.add_argument('--control_bounds', type=float, default=8.0, help='Control bounds (acceleration limits)')
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--use_minimum_energy', action='store_true',
+                       help='Use minimum-energy controller instead of LQR (recommended for near-zero error)')
 
     args = parser.parse_args()
 
     # Generate dataset
-    dataset = generate_dataset(
-        num_samples=args.num_samples,
-        state_dim=args.state_dim,
-        control_dim=args.control_dim,
-        num_steps=args.num_steps,
-        time_horizon=args.time_horizon,
-        state_range=(args.state_range_min, args.state_range_max),
-        target_range=(args.state_range_min, args.state_range_max),
-        random_seed=args.seed,
-    )
+    # First create controller with custom bounds
+    dt = args.time_horizon / args.num_steps
+
+    if args.use_minimum_energy:
+        from minimum_energy_controller import DoubleIntegratorMinimumEnergy
+        controller = DoubleIntegratorMinimumEnergy(dt=dt, control_bounds=args.control_bounds)
+        controller_name = "Minimum-Energy"
+    else:
+        controller = DoubleIntegratorLQR(dt=dt, control_bounds=args.control_bounds)
+        controller_name = "LQR"
+
+    # Now generate dataset using this LQR controller
+    np.random.seed(args.seed)
+
+    dataset = {
+        'initial_states': [],
+        'target_states': [],
+        'state_trajectories': [],
+        'control_sequences': [],
+        'costs': [],
+        'metadata': {
+            'num_samples': args.num_samples,
+            'state_dim': args.state_dim,
+            'control_dim': args.control_dim,
+            'num_steps': args.num_steps,
+            'time_horizon': args.time_horizon,
+            'dt': dt,
+            'control_bounds': args.control_bounds,
+            'controller': controller_name,
+        }
+    }
+
+    print(f"Generating {args.num_samples} optimal {controller_name} trajectories...")
+    print(f"Control bounds: ±{args.control_bounds}")
+
+    for i in range(args.num_samples):
+        # Sample random initial and target states
+        initial_state = np.random.uniform(args.state_range_min, args.state_range_max, size=args.state_dim)
+        target_state = np.random.uniform(args.state_range_min, args.state_range_max, size=args.state_dim)
+
+        # Generate optimal trajectory
+        states, controls, cost = controller.generate_trajectory(
+            initial_state=initial_state,
+            target_state=target_state,
+            num_steps=args.num_steps,
+        )
+
+        dataset['initial_states'].append(initial_state)
+        dataset['target_states'].append(target_state)
+        dataset['state_trajectories'].append(states)
+        dataset['control_sequences'].append(controls)
+        dataset['costs'].append(cost)
+
+        if (i + 1) % 1000 == 0:
+            print(f"  Generated {i + 1}/{args.num_samples} trajectories")
+
+    # Convert to numpy arrays
+    for key in ['initial_states', 'target_states', 'state_trajectories', 'control_sequences', 'costs']:
+        dataset[key] = np.array(dataset[key])
+
+    print(f"✓ Dataset generation complete!")
+    print(f"  - Initial states: {dataset['initial_states'].shape}")
+    print(f"  - Control sequences: {dataset['control_sequences'].shape}")
+    print(f"  - Average cost: {np.mean(dataset['costs']):.4f}")
 
     # Save dataset
     save_dataset(dataset, args.output_dir)

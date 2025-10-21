@@ -136,9 +136,9 @@ def double_integrator_dynamics(state, controls):
 
         for t in range(controls.shape[1]):
             u = controls[b, t, 0].item()
-            # Double integrator: dx/dt = [vel, u]
-            s[0] += s[1] * dt  # Position += velocity * dt
-            s[1] += u * dt      # Velocity += acceleration * dt
+            # Double integrator: exact integration
+            s[0] += s[1] * dt + 0.5 * u * dt * dt  # Position
+            s[1] += u * dt                          # Velocity
 
         final_states.append(torch.tensor(s))
 

@@ -37,9 +37,9 @@ def double_integrator_dynamics(state_batch, control_batch, dt=0.33):
 
         for t in range(horizon):
             acc = control_batch[b, t, 0]
-            # Integrate: v = v + a*dt, x = x + v*dt
+            # Exact integration for double integrator
+            pos = pos + vel * dt + 0.5 * acc * dt * dt
             vel = vel + acc * dt
-            pos = pos + vel * dt
 
         final_states.append(torch.tensor([pos, vel]))
 

@@ -50,6 +50,7 @@ logs/
 runs/
 wandb/
 mlruns/
+slurm_logs/
 *.tmp
 
 # Environment files
@@ -70,3 +71,5 @@ htmlcov/
 .coverage
 .coverage.*
 .pytest_cache/
+# Archive directory for historical files
+archive/
