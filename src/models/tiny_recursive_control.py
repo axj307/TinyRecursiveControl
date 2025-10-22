@@ -14,7 +14,11 @@ from dataclasses import dataclass
 
 from .encoders import ControlStateEncoder, ErrorEncoder
 from .decoders import ControlSequenceDecoder, ResidualControlDecoder
-from .recursive_reasoning import RecursiveRefinementModule, RecursiveState
+from .recursive_reasoning import (
+    RecursiveRefinementModule,
+    RecursiveState,
+    TwoLevelRecursiveRefinementModule,
+)
 
 
 @dataclass
@@ -30,13 +34,20 @@ class TRCConfig:
     hidden_dim: int = 256           # Hidden layer dimension
 
     # Architecture
-    num_reasoning_blocks: int = 2   # Number of reasoning blocks
+    num_reasoning_blocks: int = 2   # Number of reasoning blocks (for single-latent mode)
     num_heads: int = 4              # Attention heads
     use_attention: bool = True      # Use attention in reasoning
 
-    # Recursive refinement
+    # Recursive refinement (single-latent mode - backward compatible)
     num_outer_cycles: int = 3       # Number of refinement cycles (K)
     num_inner_cycles: int = 3       # Inner reasoning iterations (n)
+
+    # Two-level architecture (TRM-style) - NEW
+    use_two_level: bool = False     # Enable two-level z_H/z_L architecture
+    H_cycles: int = 3               # High-level refinement cycles (outer)
+    L_cycles: int = 4               # Low-level reasoning cycles (inner)
+    L_layers: int = 2               # Number of reasoning blocks in L_level module
+    use_gradient_truncation: bool = False  # Only backprop through last H_cycle (memory efficient)
 
     # Control bounds
     control_bounds: float = 4.0     # Control action bounds (±value)
@@ -85,16 +96,32 @@ class TinyRecursiveControl(nn.Module):
             latent_dim=config.latent_dim,
         )
 
-        # 3. Recursive Reasoning Module
-        self.recursive_reasoning = RecursiveRefinementModule(
-            latent_dim=config.latent_dim,
-            control_dim=config.control_dim,
-            control_horizon=config.control_horizon,
-            num_reasoning_blocks=config.num_reasoning_blocks,
-            hidden_dim=config.hidden_dim,
-            num_heads=config.num_heads,
-            use_attention=config.use_attention,
-        )
+        # 3. Recursive Reasoning Module (conditional: single-latent vs two-level)
+        if config.use_two_level:
+            # NEW: Two-level architecture (z_H and z_L)
+            self.recursive_reasoning = TwoLevelRecursiveRefinementModule(
+                latent_dim=config.latent_dim,
+                control_dim=config.control_dim,
+                control_horizon=config.control_horizon,
+                num_reasoning_blocks=config.L_layers,
+                H_cycles=config.H_cycles,
+                L_cycles=config.L_cycles,
+                hidden_dim=config.hidden_dim,
+                num_heads=config.num_heads,
+                use_attention=config.use_attention,
+                use_gradient_truncation=config.use_gradient_truncation,
+            )
+        else:
+            # EXISTING: Single-latent architecture (backward compatible)
+            self.recursive_reasoning = RecursiveRefinementModule(
+                latent_dim=config.latent_dim,
+                control_dim=config.control_dim,
+                control_horizon=config.control_horizon,
+                num_reasoning_blocks=config.num_reasoning_blocks,
+                hidden_dim=config.hidden_dim,
+                num_heads=config.num_heads,
+                use_attention=config.use_attention,
+            )
 
         # 4. Control Decoder
         if config.use_residual_decoder:
@@ -167,47 +194,97 @@ class TinyRecursiveControl(nn.Module):
         all_errors = []
 
         # 3. Recursive refinement cycles
-        z_current = z_initial
+        if self.config.use_two_level:
+            # NEW: Two-level architecture (z_H and z_L)
+            # Reset internal state at the beginning
+            self.recursive_reasoning._reset_state()
 
-        for k in range(self.config.num_outer_cycles):
-            # 3a. Simulate trajectory (if dynamics provided)
-            trajectory_error = None
-            if dynamics_fn is not None:
-                trajectory_error = self._simulate_and_get_error(
-                    current_state=current_state,
-                    target_state=target_state,
-                    controls=current_controls,
-                    dynamics_fn=dynamics_fn,
+            for k in range(self.config.H_cycles):
+                # 3a. Simulate trajectory (if dynamics provided)
+                trajectory_error = None
+                if dynamics_fn is not None:
+                    trajectory_error = self._simulate_and_get_error(
+                        current_state=current_state,
+                        target_state=target_state,
+                        controls=current_controls,
+                        dynamics_fn=dynamics_fn,
+                    )
+                    all_errors.append(trajectory_error)
+
+                # 3b. Two-level reasoning (returns z_H, z_L)
+                z_H, z_L = self.recursive_reasoning(
+                    z_initial=z_initial,
+                    current_controls=current_controls,
+                    trajectory_error=trajectory_error,
+                    H_step=k,
                 )
-                all_errors.append(trajectory_error)
 
-            # 3b. Update latent through recursive reasoning
-            z_current = self.recursive_reasoning(
-                z_initial=z_initial,
-                current_controls=current_controls,
-                trajectory_error=trajectory_error,
-                num_inner_cycles=self.config.num_inner_cycles,
-            )
+                # 3c. Generate improved controls from z_H (high-level makes strategic decisions)
+                if self.config.use_residual_decoder:
+                    # Residual update
+                    residual = self.control_decoder(z_H, current_controls)
+                    current_controls = current_controls + residual
+                    # Clamp to bounds
+                    current_controls = torch.clamp(
+                        current_controls,
+                        -self.config.control_bounds,
+                        self.config.control_bounds,
+                    )
+                else:
+                    # Full regeneration
+                    current_controls = self.control_decoder(z_H)
 
-            # 3c. Generate improved controls
-            if self.config.use_residual_decoder:
-                # Residual update
-                residual = self.control_decoder(z_current, current_controls)
-                current_controls = current_controls + residual
-                # Clamp to bounds
-                current_controls = torch.clamp(
-                    current_controls,
-                    -self.config.control_bounds,
-                    self.config.control_bounds,
+                # Store iteration results
+                if return_all_iterations:
+                    all_controls.append(current_controls)
+                    all_latents.append(z_H)  # Store high-level latent
+
+            # Final latent is z_H
+            z_current = z_H
+
+        else:
+            # EXISTING: Single-latent architecture (backward compatible)
+            z_current = z_initial
+
+            for k in range(self.config.num_outer_cycles):
+                # 3a. Simulate trajectory (if dynamics provided)
+                trajectory_error = None
+                if dynamics_fn is not None:
+                    trajectory_error = self._simulate_and_get_error(
+                        current_state=current_state,
+                        target_state=target_state,
+                        controls=current_controls,
+                        dynamics_fn=dynamics_fn,
+                    )
+                    all_errors.append(trajectory_error)
+
+                # 3b. Update latent through recursive reasoning
+                z_current = self.recursive_reasoning(
+                    z_initial=z_initial,
+                    current_controls=current_controls,
+                    trajectory_error=trajectory_error,
+                    num_inner_cycles=self.config.num_inner_cycles,
                 )
-            else:
-                # Full regeneration
-                current_controls = self.control_decoder(z_current)
 
-            # Store iteration results
-            if return_all_iterations:
-                all_controls.append(current_controls)
-                all_latents.append(z_current)
+                # 3c. Generate improved controls
+                if self.config.use_residual_decoder:
+                    # Residual update
+                    residual = self.control_decoder(z_current, current_controls)
+                    current_controls = current_controls + residual
+                    # Clamp to bounds
+                    current_controls = torch.clamp(
+                        current_controls,
+                        -self.config.control_bounds,
+                        self.config.control_bounds,
+                    )
+                else:
+                    # Full regeneration
+                    current_controls = self.control_decoder(z_current)
+
+                # Store iteration results
+                if return_all_iterations:
+                    all_controls.append(current_controls)
+                    all_latents.append(z_current)
 
         # Prepare output dictionary
         output = {
@@ -302,5 +379,60 @@ class TinyRecursiveControl(nn.Module):
             hidden_dim=512,
             num_reasoning_blocks=4,
             num_heads=8,
+        )
+        return cls(config)
+
+    # Two-level architecture factory methods
+    @classmethod
+    def create_two_level_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """Create a small two-level model (~150K parameters)."""
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=64,
+            hidden_dim=128,
+            num_heads=2,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=4,
+            L_layers=2,
+            use_gradient_truncation=True,
+        )
+        return cls(config)
+
+    @classmethod
+    def create_two_level_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """Create a medium two-level model (~600K parameters)."""
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=128,
+            hidden_dim=256,
+            num_heads=4,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=4,
+            L_layers=2,
+            use_gradient_truncation=True,
+        )
+        return cls(config)
+
+    @classmethod
+    def create_two_level_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """Create a large two-level model (~1.5M parameters)."""
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=256,
+            hidden_dim=512,
+            num_heads=8,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=6,
+            L_layers=3,
+            use_gradient_truncation=True,
         )
         return cls(config)
