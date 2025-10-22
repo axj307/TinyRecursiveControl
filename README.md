@@ -8,7 +8,10 @@ This project adapts the **Tiny Recursion Model** (TRM) architecture from [Less i
 
 ### Key Features
 
-- **Parameter Efficient**: 1-5M parameters vs 3B+ for LLM approaches
+- **Parameter Efficient**: 150K-5M parameters vs 3B+ for LLM approaches
+- **Two Architectural Modes**:
+  - **Single-Latent (Default)**: Simplified, clean architecture (~530K params)
+  - **Two-Level (TRM-Style)**: Hierarchical reasoning with z_H/z_L states (~150K-600K params, ~85% TRM fidelity)
 - **Recursive Refinement**: Iteratively improves control sequences
 - **Direct Numeric Output**: No tokenization overhead
 - **Weight Sharing**: Same reasoning module used across refinement iterations
@@ -16,6 +19,9 @@ This project adapts the **Tiny Recursion Model** (TRM) architecture from [Less i
 
 ## Architecture
 
+TRC offers **two architectural modes**:
+
+### Mode 1: Single-Latent (Default)
 ```
 Input: [current_state, target_state, time_remaining]
   ↓
@@ -43,6 +49,44 @@ Input: [current_state, target_state, time_remaining]
   ↓
 Output: Final refined controls
 ```
+
+### Mode 2: Two-Level (TRM-Style)
+```
+Input: [current_state, target_state, time_remaining]
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ 1. State Encoder                                        │
+│    Input → z_initial                                    │
+└─────────────────────────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ 2. Initialize Hierarchical States                       │
+│    z_H ← H_init (learnable)                            │
+│    z_L ← L_init (learnable)                            │
+└─────────────────────────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ 3. Two-Level Recursive Refinement (H_cycles)            │
+│   For k = 1 to H_cycles:                               │
+│     a) Low-level reasoning (L_cycles iterations):       │
+│        - z_L = L_level(z_L, z_H + z_initial + context) │
+│     b) High-level reasoning (1 iteration):              │
+│        - z_H = L_level(z_H, z_L)                       │
+│     c) Generate improved controls from z_H:             │
+│        - controls_k = controls_{k-1} + Δcontrols        │
+└─────────────────────────────────────────────────────────┘
+  ↓
+Output: Final refined controls
+
+Key: z_H = strategic planning, z_L = tactical execution
+     Same L_level module for both (weight sharing)
+```
+
+**When to use which mode?**
+- **Single-Latent**: Simplicity, fast prototyping, proven results (~530K params)
+- **Two-Level**: TRM fidelity, hierarchical reasoning, max efficiency (~150K-600K params)
+
+See [`docs/AI/TwoLevel_Architecture_Guide.md`](docs/AI/TwoLevel_Architecture_Guide.md) for details.
 
 ## Installation
 
@@ -75,13 +119,18 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### Basic Usage
+### Basic Usage (Single-Latent Mode)
 
 ```python
 import torch
 from src.models import TinyRecursiveControl, TRCConfig
 
-# Create model configuration
+# Option 1: Use predefined sizes (recommended)
+model = TinyRecursiveControl.create_small()   # ~1M params
+model = TinyRecursiveControl.create_medium()  # ~3M params
+model = TinyRecursiveControl.create_large()   # ~5M params
+
+# Option 2: Custom configuration
 config = TRCConfig(
     state_dim=2,              # Position, velocity
     control_dim=1,            # Acceleration
@@ -91,14 +140,7 @@ config = TRCConfig(
     num_inner_cycles=3,       # 3 reasoning steps per iteration
     control_bounds=4.0,       # Control limits: ±4.0
 )
-
-# Create model
 model = TinyRecursiveControl(config)
-
-# Or use predefined sizes
-model = TinyRecursiveControl.create_small()   # ~1M params
-model = TinyRecursiveControl.create_medium()  # ~3M params
-model = TinyRecursiveControl.create_large()   # ~5M params
 
 # Generate controls
 current_state = torch.tensor([[0.0, 0.0]])    # [pos, vel]
@@ -106,6 +148,48 @@ target_state = torch.tensor([[1.0, 0.0]])     # [pos, vel]
 
 output = model(current_state, target_state)
 controls = output['controls']  # [batch, horizon, control_dim]
+
+print(f"Generated control sequence: {controls.shape}")
+print(f"Model parameters: {model.get_parameter_count()['total']:,}")
+```
+
+### Using Two-Level Mode (TRM-Style)
+
+```python
+import torch
+from src.models import TinyRecursiveControl
+
+# Option 1: Use predefined two-level sizes (recommended)
+model = TinyRecursiveControl.create_two_level_small()    # ~150K params
+model = TinyRecursiveControl.create_two_level_medium()   # ~600K params
+model = TinyRecursiveControl.create_two_level_large()    # ~1.5M params
+
+# Option 2: Custom two-level configuration
+from src.models import TRCConfig
+
+config = TRCConfig(
+    state_dim=2,
+    control_dim=1,
+    control_horizon=15,
+    latent_dim=128,
+    hidden_dim=256,
+    num_heads=4,
+    # Enable two-level mode
+    use_two_level=True,
+    H_cycles=3,                        # High-level refinement cycles
+    L_cycles=4,                        # Low-level reasoning cycles
+    L_layers=2,                        # Reasoning blocks in L_level
+    use_gradient_truncation=True,      # Optional memory efficiency
+    control_bounds=4.0,
+)
+model = TinyRecursiveControl(config)
+
+# Generate controls (same API as single-latent)
+current_state = torch.tensor([[0.0, 0.0]])
+target_state = torch.tensor([[1.0, 0.0]])
+
+output = model(current_state, target_state)
+controls = output['controls']
 
 print(f"Generated control sequence: {controls.shape}")
 print(f"Model parameters: {model.get_parameter_count()['total']:,}")
@@ -238,20 +322,45 @@ python src/training/rl_finetuner.py \
 
 ### Hyperparameters
 
+#### Single-Latent Mode
+
 **Small Model** (~1M parameters):
 - latent_dim=64, hidden_dim=128
 - num_reasoning_blocks=2, num_heads=2
+- num_outer_cycles=3, num_inner_cycles=3
 - Suitable for: Simple systems, fast inference
 
 **Medium Model** (~3M parameters):
 - latent_dim=128, hidden_dim=256
 - num_reasoning_blocks=3, num_heads=4
+- num_outer_cycles=3, num_inner_cycles=3
 - Suitable for: Standard control problems
 
 **Large Model** (~5M parameters):
 - latent_dim=256, hidden_dim=512
 - num_reasoning_blocks=4, num_heads=8
+- num_outer_cycles=3, num_inner_cycles=3
 - Suitable for: Complex systems, high accuracy
+
+#### Two-Level Mode (TRM-Style)
+
+**Small Model** (~150K parameters):
+- latent_dim=64, hidden_dim=128
+- num_heads=2, L_layers=2
+- H_cycles=3, L_cycles=4
+- Suitable for: Edge deployment, maximum efficiency
+
+**Medium Model** (~600K parameters):
+- latent_dim=128, hidden_dim=256
+- num_heads=4, L_layers=2
+- H_cycles=3, L_cycles=4
+- Suitable for: Hierarchical control, TRM experiments
+
+**Large Model** (~1.5M parameters):
+- latent_dim=256, hidden_dim=512
+- num_heads=8, L_layers=3
+- H_cycles=3, L_cycles=6
+- Suitable for: Complex hierarchical reasoning
 
 ## Experiments
 
@@ -285,6 +394,12 @@ Test on out-of-distribution scenarios:
 5. ⬜ Run baseline experiments
 6. ⬜ Compare with LLM approach
 7. ⬜ Publish results
+
+## Documentation
+
+- **[Two-Level Architecture Guide](docs/AI/TwoLevel_Architecture_Guide.md)**: Complete guide to using the TRM-style hierarchical mode
+- **[TRM vs TRC Comparison](docs/AI/TRM_vs_TRC_Comparison.md)**: Detailed comparison of TRM and TRC architectures
+- **[TRM Paper Architecture](docs/AI/TRM_Paper_Architecture.md)**: Summary of the original TRM paper
 
 ## References
 

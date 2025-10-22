@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TRM_Model_Architecture_Explained</title>
+    <style>
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            line-height: 1.4;
+            max-width: 900px;
+            margin: 15px auto;
+            padding: 15px;
+            background: #ffffff;
+            color: #333;
+            font-size: 11pt;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 6px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-size: 18pt;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 1px solid #95a5a6;
+            padding-bottom: 4px;
+            margin-top: 12px;
+            margin-bottom: 8px;
+            font-size: 14pt;
+        }
+        h3 {
+            color: #555;
+            margin-top: 10px;
+            margin-bottom: 6px;
+            font-size: 12pt;
+        }
+        p {
+            margin: 6px 0;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 8px;
+            border-radius: 3px;
+            overflow-x: auto;
+            line-height: 1.3;
+            margin: 8px 0;
+            font-size: 9pt;
+        }
+        pre code {
+            background: transparent;
+            color: #ecf0f1;
+            padding: 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+            font-size: 10pt;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        blockquote {
+            border-left: 3px solid #3498db;
+            margin: 8px 0;
+            padding-left: 12px;
+            color: #555;
+            font-style: italic;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid #ecf0f1;
+            margin: 15px 0;
+        }
+        .emoji {
+            font-size: 1.1em;
+        }
+        ul, ol {
+            margin: 6px 0;
+            padding-left: 25px;
+        }
+        li {
+            margin: 3px 0;
+        }
+        @media print {
+            body {
+                margin: 10mm;
+                padding: 0;
+                max-width: 100%;
+                font-size: 10pt;
+            }
+            h1 {
+                page-break-before: auto;
+                margin-top: 10px;
+                font-size: 16pt;
+            }
+            h1:first-child {
+                page-break-before: avoid;
+            }
+            h2 {
+                font-size: 13pt;
+                margin-top: 10px;
+            }
+            h3 {
+                font-size: 11pt;
+            }
+            pre {
+                page-break-inside: avoid;
+                font-size: 8pt;
+            }
+            table {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+<h1>Understanding Your TRM Model: A Detailed Explanation</h1>
+<h2>1. What is TRM? (The Original Paper)</h2>
+<p>TRM is a revolutionary architecture from the paper "Less is More: Recursive Reasoning with Tiny Networks" that achieved impressive results on ARC-AGI puzzles with only <strong>7M parameters<strong> (vs billions in LLMs). The key insight:</p>
+<p><strong>Instead of making models bigger, make them think recursively!<strong></p>
+<p>Core principles:</p>
+<p>- <strong>Recursive reasoning<strong>: Apply a small neural network multiple times to refine answers</p>
+<p>- <strong>Weight sharing<strong>: Use the same reasoning module repeatedly (saves parameters!)</p>
+<p>- <strong>Two-level hierarchy<strong>: Separate strategic planning (z_H) from tactical execution (z_L)</p>
+<p>- <strong>Iterative refinement<strong>: Start with a rough answer, improve it gradually</p>
+<p>Think of it like solving a puzzle by making multiple passes - each time you see more patterns and refine your solution.</p>
+<hr>
+<h2>2. Your Adaptation: TRC (Tiny Recursive Control)</h2>
+<p>Your codebase adapts TRM from <strong>discrete puzzle solving<strong> → <strong>continuous control problems<strong>. Instead of predicting grid tokens, you're generating control sequences (like steering, acceleration) to move a system from one state to another.</p>
+<h3>The Problem You're Solving</h3>
+<p><strong>Input<strong>:</p>
+<p>- Current state: <code>[position=0.0, velocity=0.0]</code></p>
+<p>- Target state: <code>[position=1.0, velocity=0.0]</code></p>
+<p><strong>Output<strong>:</p>
+<p>- Control sequence: 15 control actions over time to reach the target</p>
+<p><strong>Goal<strong>: Generate optimal controls with minimal parameters (530K vs 3B+ in LLMs)</p>
+<hr>
+<h2>3. Two Architectural Modes</h2>
+<p>Your codebase offers <strong>two modes<strong> - this is actually quite clever!</p>
+<h3>Mode 1: Single-Latent (Default, Simpler)</h3>
+<pre><code>model = TinyRecursiveControl.create_medium()  # ~530K params
+</code></pre>
+<p><strong>Architecture<strong>:</p>
+<pre><code>Input: [current_state, target_state]
+    ↓
+[Encoder] → z_initial (problem understanding)
+    ↓
+Generate initial controls
+    ↓
+FOR k=1 to 3 (outer refinement cycles):
+    ├─ Embed current controls into latent
+    ├─ Add trajectory error feedback
+    ├─ FOR n=1 to 3 (inner reasoning steps):
+    │   └─ Update latent: z = ReasoningBlock(z, z_initial)
+    └─ Decode: Generate improved controls
+    ↓
+Final refined controls
+</code></pre>
+<p><strong>Key behavior<strong>: Single latent state that refines itself iteratively, always maintaining connection to initial problem (z_initial).</p>
+<h3>Mode 2: Two-Level (TRM-Style, Hierarchical)</h3>
+<pre><code>model = TinyRecursiveControl.create_two_level_medium()  # ~600K params
+</code></pre>
+<p><strong>Architecture<strong> (from <code>recursive_reasoning.py:454-518</code>):</p>
+<pre><code>Input: [current_state, target_state]
+    ↓
+[Encoder] → z_initial (problem understanding)
+    ↓
+Initialize: z_H = H_init, z_L = L_init (learnable starting points)
+    ↓
+FOR k=1 to 3 (H_cycles - high-level refinement):
+
+    Low-level reasoning (4 iterations):
+    FOR i=1 to 4 (L_cycles):
+        ├─ Input: z_H + z_initial + control_context
+        └─ z_L = L_level(z_L, input)  ← Process details
+
+    High-level reasoning (1 iteration):
+    └─ z_H = L_level(z_H, z_L)  ← Strategic planning
+
+    Generate controls from z_H:
+    └─ controls = controls + decoder(z_H)
+    ↓
+Final refined controls
+</code></pre>
+<p><strong>Key behavior<strong>:</p>
+<p>- <strong>z_L<strong> (low-level) processes <strong>detailed control execution<strong> (4 times per cycle)</p>
+<p>- <strong>z_H<strong> (high-level) does <strong>strategic trajectory planning<strong> (1 time per cycle)</p>
+<p>- <strong>Same module (L_level) used for both!<strong> This is the weight-sharing magic!</p>
+<hr>
+<h2>4. How the Model Thinks (Step-by-Step Example)</h2>
+<p>Let me walk through what happens when you call the model:</p>
+<h3>Example: Move from `[0, 0]` to `[1, 0]`</h3>
+<pre><code>current_state = torch.tensor([[0.0, 0.0]])  # [position, velocity]
+target_state = torch.tensor([[1.0, 0.0]])   # [position, velocity]
+output = model(current_state, target_state)
+</code></pre>
+<p><strong>Step 1: Problem Encoding<strong> (<code>tiny_recursive_control.py:205-209</code>)</p>
+<pre><code>z_initial = state_encoder([0.0, 0.0, 1.0, 0.0, 5.0])
+# Encodes: current pos, vel, target pos, vel, time_remaining
+# Output: z_initial = [batch, 128] (latent problem representation)
+</code></pre>
+<p><strong>Step 2: Initial Guess<strong> (<code>tiny_recursive_control.py:212</code>)</p>
+<pre><code>controls_0 = initial_generator(z_initial)
+# Generates first rough control sequence [batch, 15, 1]
+# Might not be optimal yet!
+</code></pre>
+<p><strong>Step 3: Recursive Refinement<strong> (Two-level mode, <code>tiny_recursive_control.py:220-264</code>)</p>
+<p><strong>Outer Cycle 1 (k=0):<strong></p>
+<pre><code>z_H = [learnable H_init]  # Strategic state
+z_L = [learnable L_init]  # Tactical state
+
+Low-level reasoning (4 iterations):
+  z_L sees: z_H (strategy) + z_initial (problem) + controls_0 (current plan)
+  z_L thinks: "How can I execute this better?"
+  z_L updates 4 times through L_level blocks
+
+High-level reasoning (1 iteration):
+  z_H sees: z_L (execution details)
+  z_H thinks: "What's the overall strategy?"
+  z_H updates 1 time through same L_level blocks
+
+Generate improved controls:
+  controls_1 = controls_0 + decoder(z_H)  # Residual update
+</code></pre>
+<p><strong>Outer Cycle 2 (k=1):<strong></p>
+<pre><code>Low-level reasoning (4 iterations):
+  z_L sees: z_H + z_initial + controls_1
+  z_L thinks: "Even better execution?"
+
+High-level reasoning (1 iteration):
+  z_H sees: z_L
+  z_H thinks: "Refine strategy?"
+
+Generate:
+  controls_2 = controls_1 + decoder(z_H)
+</code></pre>
+<p><strong>Outer Cycle 3 (k=2):<strong></p>
+<pre><code>Final refinement cycle
+controls_final = controls_2 + decoder(z_H)
+</code></pre>
+<p><strong>Step 4: Return<strong></p>
+<pre><code>return {'controls': controls_final}  # [batch, 15, 1]
+</code></pre>
+<hr>
+<h2>5. Key Mechanisms Explained</h2>
+<h3>A. Recursive Reasoning Blocks (`recursive_reasoning.py:27-133`)</h3>
+<p>Each block does:</p>
+<pre><code>def forward(z, context):
+    # 1. Context injection
+    z = z + context  # Add information from other sources
+
+    # 2. Self-attention (think about latent state relationships)
+    z = norm(z + attention(z, z, z))
+
+    # 3. Feed-forward (process and transform)
+    z = norm(z + FFN(z))
+
+    return z
+</code></pre>
+<p>This is like "thinking deeply" about the current state.</p>
+<h3>B. Weight Sharing</h3>
+<p>The <strong>same L_level module<strong> is used for:</p>
+<p>- z_L updates (4 times)</p>
+<p>- z_H updates (1 time)</p>
+<p>- Across all H_cycles (3 times)</p>
+<p><strong>Total reuse<strong>: <code>3 × (4 + 1) = 15 times</code> the same module is called!</p>
+<p>This is why it's so parameter-efficient - one module, many uses!</p>
+<h3>C. Context Injection</h3>
+<p><strong>In Low-level reasoning<strong> (<code>recursive_reasoning.py:503</code>):</p>
+<pre><code>low_level_input = z_H + z_initial + control_context
+z_L = L_level(z_L, low_level_input)
+</code></pre>
+<p>z_L receives:</p>
+<p>- <strong>z_H<strong>: Strategic guidance from high-level</p>
+<p>- <strong>z_initial<strong>: Always remember the original problem</p>
+<p>- <strong>control_context<strong>: Current controls + trajectory error</p>
+<p><strong>In High-level reasoning<strong> (<code>recursive_reasoning.py:508</code>):</p>
+<pre><code>z_H = L_level(z_H, z_L)
+</code></pre>
+<p>z_H receives:</p>
+<p>- <strong>z_L<strong>: What did the low-level learn?</p>
+<p>This creates a <strong>communication loop<strong> between levels!</p>
+<h3>D. Gradient Truncation (Optional Memory Efficiency)</h3>
+<p>From <code>recursive_reasoning.py:494-497</code>:</p>
+<pre><code>if use_gradient_truncation and (H_step < H_cycles - 1):
+    ctx = torch.no_grad()  # First 2 cycles: no gradients stored
+else:
+    ctx = torch.enable_grad()  # Last cycle: full gradients
+</code></pre>
+<p><strong>Why?<strong> Saves memory during training! Only backpropagate through the last H_cycle. The model still learns because the last cycle depends on earlier cycles through the carried z_H and z_L states.</p>
+<hr>
+<h2>6. Your Recent Ablation Study Results</h2>
+<p>Looking at your SLURM log (<code>slurm_logs/trm_ablation_5515737.out</code>), you tested different TRM features:</p>
+<p><strong>Results Summary<strong>:</p>
+<table>
+<tr><th>Configuration</th><th>Best Loss</th><th>Improvement vs Baseline</th></tr>
+<tr><td>**Baseline (Current TRC)**</td><td>0.000049</td><td>-</td></tr>
+<tr><td>**SwiGLU activation**</td><td>0.000041</td><td>+16%</td></tr>
+<tr><td>**RMSNorm**</td><td>**0.000014**</td><td>**+72%** 🏆</td></tr>
+<tr><td>**Post-norm**</td><td>0.000021</td><td>+56%</td></tr>
+<tr><td>**4× FFN expansion**</td><td>0.000044</td><td>+9%</td></tr>
+<tr><td>**Fixed inits**</td><td>0.000019</td><td>+60%</td></tr>
+<tr><td>**Full TRM (all features)**</td><td>0.000045</td><td>+8%</td></tr>
+</table>
+<p><strong>Key Finding<strong>: <strong>RMSNorm alone gives 72% improvement!<strong> This is a huge win from a simple change.</p>
+<p>Interestingly, combining all TRM features ("Full TRM") doesn't win - <strong>RMSNorm by itself is best<strong>. This suggests some features interact negatively or your control problem differs from puzzle solving.</p>
+<hr>
+<h2>7. Model Behavior Visualization</h2>
+<p>Here's what's happening at each iteration:</p>
+<pre><code>Initial state: [0.0, 0.0] → Target: [1.0, 0.0]
+
+Iteration 0: controls_0 (rough guess)
+  → Trajectory lands at [0.8, 0.5]  ❌ Miss by 0.36
+
+Iteration 1: Recursive reasoning refines
+  z_L: "I see we're overshooting velocity, need gentler control"
+  z_H: "Overall trajectory shape needs adjustment"
+  → controls_1
+  → Trajectory lands at [0.95, 0.1]  ✓ Better! Miss by 0.10
+
+Iteration 2: Further refinement
+  z_L: "Fine-tune final approach"
+  z_H: "Good strategy, minor tweaks"
+  → controls_2
+  → Trajectory lands at [0.998, 0.02]  ✓ Great! Miss by 0.020
+
+Iteration 3: Final polish
+  → controls_final
+  → Trajectory lands at [1.000, 0.001]  ✓ Perfect! Miss by 0.001
+</code></pre>
+<p>Each cycle <strong>iteratively improves<strong> the controls!</p>
+<hr>
+<h2>8. Why This Architecture Works</h2>
+<p><strong>Parameter Efficiency<strong>:</p>
+<p>- Single-latent: ~530K params</p>
+<p>- Two-level: ~600K params</p>
+<p>- LLM baseline: 3B+ params</p>
+<p><strong>Recursive Reasoning Benefits<strong>:</p>
+<p>1. <strong>Weight sharing<strong>: One module used 15 times → fewer parameters</p>
+<p>2. <strong>Iterative refinement<strong>: Start rough, improve gradually → better solutions</p>
+<p>3. <strong>Hierarchical thinking<strong>: Strategy (z_H) + Execution (z_L) → better organization</p>
+<p>4. <strong>Context injection<strong>: Always remember problem + current state → focused learning</p>
+<p><strong>Your Results<strong>: 100% success rate on control tasks with 0.13% gap from optimal!</p>
+<hr>
+<h2>9. Key Files Breakdown</h2>
+<p>- <strong><code>tiny_recursive_control.py</code><strong>: Main model, orchestrates everything</p>
+<p>- <strong><code>recursive_reasoning.py</code><strong>: Core recursive logic, two-level implementation</p>
+<p>- <strong><code>layers.py</code><strong>: Building blocks (SwiGLU, RMSNorm, etc.)</p>
+<p>- <strong><code>encoders.py</code><strong>: Convert states to latent representations</p>
+<p>- <strong><code>decoders.py</code><strong>: Convert latents to control sequences</p>
+<hr>
+<h2>10. Summary: The Big Picture</h2>
+<p>Your TRM model is a <strong>small, smart controller<strong> that thinks recursively:</p>
+<p>1. <strong>Understands the problem<strong> (state encoder)</p>
+<p>2. <strong>Makes an initial guess<strong> (initial generator)</p>
+<p>3. <strong>Refines iteratively through recursive reasoning<strong>:</p>
+<p>   - Low-level (z_L): "How do I execute this?"</p>
+<p>   - High-level (z_H): "What's the strategy?"</p>
+<p>   - Communication between levels</p>
+<p>   - Weight sharing for efficiency</p>
+<p>4. <strong>Outputs refined controls<strong> (decoder)</p>
+<p><strong>The magic<strong>: Achieves near-optimal control with <strong>200× fewer parameters<strong> than LLMs by thinking recursively instead of scaling up!</p>
+<p>Your ablation study shows <strong>RMSNorm is a key architectural win<strong> - consider adopting it as your default!</p>
+
+</body>
+</html>

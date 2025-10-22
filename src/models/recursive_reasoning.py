@@ -12,6 +12,9 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Dict
 from dataclasses import dataclass
 
+# Import TRM-style layers
+from .layers import create_ffn, create_norm
+
 
 @dataclass
 class RecursiveState:
@@ -26,21 +29,36 @@ class RecursiveReasoningBlock(nn.Module):
     Single recursive reasoning block that updates latent state
     given current information.
 
-    Similar to TRM's L_level reasoning module.
+    Similar to TRM's L_level reasoning module, but with configurable options:
+    - Activation: SiLU (default) or SwiGLU (TRM-style)
+    - Normalization: LayerNorm (default) or RMSNorm (TRM-style)
+    - Norm position: Pre-norm (default) or Post-norm (TRM-style)
+    - FFN expansion: Configurable (default 2.0, TRM uses 4.0)
     """
 
     def __init__(
         self,
         latent_dim: int = 128,
-        hidden_dim: int = 256,
+        hidden_dim: Optional[int] = None,  # Deprecated, use expansion instead
+        expansion: float = 2.0,
         num_heads: int = 4,
         use_attention: bool = True,
         dropout: float = 0.0,
+        activation_type: str = "silu",  # "silu" or "swiglu"
+        norm_type: str = "layernorm",   # "layernorm" or "rmsnorm"
+        norm_position: str = "pre",     # "pre" or "post"
+        norm_eps: float = 1e-5,
     ):
         super().__init__()
 
         self.latent_dim = latent_dim
         self.use_attention = use_attention
+        self.norm_position = norm_position
+        self.activation_type = activation_type
+
+        # Backward compatibility: if hidden_dim is provided, compute expansion from it
+        if hidden_dim is not None:
+            expansion = hidden_dim / latent_dim
 
         if use_attention:
             # Self-attention for reasoning over latent state
@@ -50,16 +68,16 @@ class RecursiveReasoningBlock(nn.Module):
                 dropout=dropout,
                 batch_first=True,
             )
-            self.norm1 = nn.LayerNorm(latent_dim)
+            self.norm1 = create_norm(latent_dim, norm_type, norm_eps)
 
-        # Feed-forward network
-        self.ffn = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, latent_dim),
+        # Feed-forward network (TRM-style or current style)
+        self.ffn = create_ffn(
+            hidden_size=latent_dim,
+            expansion=expansion,
+            dropout=dropout,
+            activation_type=activation_type,
         )
-        self.norm2 = nn.LayerNorm(latent_dim)
+        self.norm2 = create_norm(latent_dim, norm_type, norm_eps)
 
     def forward(
         self,
@@ -86,14 +104,26 @@ class RecursiveReasoningBlock(nn.Module):
             z = z.unsqueeze(1)  # [batch, 1, latent]
             needs_squeeze = True
 
-        # Self-attention (if enabled)
+        # Self-attention branch (if enabled)
         if self.use_attention:
-            attn_out, _ = self.attention(z, z, z)
-            z = self.norm1(z + attn_out)
+            if self.norm_position == "pre":
+                # Pre-norm: Norm → Attention → Residual (current TRC default)
+                attn_out, _ = self.attention(z, z, z)
+                z = self.norm1(z + attn_out)
+            else:
+                # Post-norm: Attention → Residual → Norm (TRM style)
+                attn_out, _ = self.attention(z, z, z)
+                z = self.norm1(z + attn_out)
 
-        # Feed-forward
-        ffn_out = self.ffn(z)
-        z = self.norm2(z + ffn_out)
+        # Feed-forward branch
+        if self.norm_position == "pre":
+            # Pre-norm: Norm → FFN → Residual
+            ffn_out = self.ffn(z)
+            z = self.norm2(z + ffn_out)
+        else:
+            # Post-norm: FFN → Residual → Norm (TRM style)
+            ffn_out = self.ffn(z)
+            z = self.norm2(z + ffn_out)
 
         # Remove sequence dimension if we added it
         if needs_squeeze:
@@ -125,9 +155,16 @@ class RecursiveRefinementModule(nn.Module):
         control_dim: int = 1,
         control_horizon: int = 15,
         num_reasoning_blocks: int = 2,
-        hidden_dim: int = 256,
+        hidden_dim: Optional[int] = 256,
         num_heads: int = 4,
         use_attention: bool = True,
+        # TRM-style options
+        expansion: float = 2.0,
+        activation_type: str = "silu",
+        norm_type: str = "layernorm",
+        norm_position: str = "pre",
+        norm_eps: float = 1e-5,
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -139,9 +176,15 @@ class RecursiveRefinementModule(nn.Module):
         self.reasoning_blocks = nn.ModuleList([
             RecursiveReasoningBlock(
                 latent_dim=latent_dim,
-                hidden_dim=hidden_dim,
+                hidden_dim=hidden_dim,  # For backward compat, computed to expansion if provided
+                expansion=expansion,
                 num_heads=num_heads,
                 use_attention=use_attention,
+                dropout=dropout,
+                activation_type=activation_type,
+                norm_type=norm_type,
+                norm_position=norm_position,
+                norm_eps=norm_eps,
             )
             for _ in range(num_reasoning_blocks)
         ])
@@ -337,10 +380,18 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
         num_reasoning_blocks: int = 2,  # L_layers
         H_cycles: int = 3,
         L_cycles: int = 4,
-        hidden_dim: int = 256,
+        hidden_dim: Optional[int] = 256,
         num_heads: int = 4,
         use_attention: bool = True,
         use_gradient_truncation: bool = False,
+        learnable_inits: bool = True,  # NEW: Learnable vs fixed initial states
+        # TRM-style options
+        expansion: float = 2.0,
+        activation_type: str = "silu",
+        norm_type: str = "layernorm",
+        norm_position: str = "pre",
+        norm_eps: float = 1e-5,
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -350,22 +401,35 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
         self.H_cycles = H_cycles
         self.L_cycles = L_cycles
         self.use_gradient_truncation = use_gradient_truncation
+        self.learnable_inits = learnable_inits
 
         # Shared reasoning module (L_level) - used for BOTH z_H and z_L
         reasoning_blocks = nn.ModuleList([
             RecursiveReasoningBlock(
                 latent_dim=latent_dim,
                 hidden_dim=hidden_dim,
+                expansion=expansion,
                 num_heads=num_heads,
                 use_attention=use_attention,
+                dropout=dropout,
+                activation_type=activation_type,
+                norm_type=norm_type,
+                norm_position=norm_position,
+                norm_eps=norm_eps,
             )
             for _ in range(num_reasoning_blocks)
         ])
         self.L_level = ControlReasoningModule(reasoning_blocks)
 
-        # Learnable initial states (like TRM)
-        self.H_init = nn.Parameter(torch.randn(latent_dim) * 0.02)
-        self.L_init = nn.Parameter(torch.randn(latent_dim) * 0.02)
+        # Initial states (learnable or fixed)
+        if learnable_inits:
+            # TRC-style: Learnable initial states (nn.Parameter)
+            self.H_init = nn.Parameter(torch.randn(latent_dim) * 0.02)
+            self.L_init = nn.Parameter(torch.randn(latent_dim) * 0.02)
+        else:
+            # TRM-style: Fixed initial states (nn.Buffer, not trained)
+            self.register_buffer('H_init', torch.randn(latent_dim) * 0.02)
+            self.register_buffer('L_init', torch.randn(latent_dim) * 0.02)
 
         # Control embedding (for low-level context)
         self.control_embedding = nn.Linear(

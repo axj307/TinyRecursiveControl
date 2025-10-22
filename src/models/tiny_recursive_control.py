@@ -31,7 +31,7 @@ class TRCConfig:
 
     # Model dimensions
     latent_dim: int = 128           # Latent state dimension
-    hidden_dim: int = 256           # Hidden layer dimension
+    hidden_dim: int = 256           # Hidden layer dimension (deprecated - use expansion instead)
 
     # Architecture
     num_reasoning_blocks: int = 2   # Number of reasoning blocks (for single-latent mode)
@@ -48,6 +48,14 @@ class TRCConfig:
     L_cycles: int = 4               # Low-level reasoning cycles (inner)
     L_layers: int = 2               # Number of reasoning blocks in L_level module
     use_gradient_truncation: bool = False  # Only backprop through last H_cycle (memory efficient)
+    learnable_inits: bool = True    # Learnable H_init/L_init (True) vs fixed (False, TRM-style)
+
+    # TRM-style components (configurable for ablation studies)
+    activation_type: str = "silu"   # "silu" (current) or "swiglu" (TRM-style)
+    norm_type: str = "layernorm"    # "layernorm" (current) or "rmsnorm" (TRM-style)
+    norm_position: str = "pre"      # "pre" (current) or "post" (TRM-style)
+    expansion: float = 2.0          # FFN expansion factor (2.0 current, 4.0 TRM-style)
+    norm_eps: float = 1e-5          # Normalization epsilon
 
     # Control bounds
     control_bounds: float = 4.0     # Control action bounds (±value)
@@ -110,6 +118,14 @@ class TinyRecursiveControl(nn.Module):
                 num_heads=config.num_heads,
                 use_attention=config.use_attention,
                 use_gradient_truncation=config.use_gradient_truncation,
+                learnable_inits=config.learnable_inits,
+                # TRM-style options
+                expansion=config.expansion,
+                activation_type=config.activation_type,
+                norm_type=config.norm_type,
+                norm_position=config.norm_position,
+                norm_eps=config.norm_eps,
+                dropout=config.dropout,
             )
         else:
             # EXISTING: Single-latent architecture (backward compatible)
@@ -121,6 +137,13 @@ class TinyRecursiveControl(nn.Module):
                 hidden_dim=config.hidden_dim,
                 num_heads=config.num_heads,
                 use_attention=config.use_attention,
+                # TRM-style options
+                expansion=config.expansion,
+                activation_type=config.activation_type,
+                norm_type=config.norm_type,
+                norm_position=config.norm_position,
+                norm_eps=config.norm_eps,
+                dropout=config.dropout,
             )
 
         # 4. Control Decoder
@@ -434,5 +457,92 @@ class TinyRecursiveControl(nn.Module):
             L_cycles=6,
             L_layers=3,
             use_gradient_truncation=True,
+        )
+        return cls(config)
+
+    # TRM-style architecture factory methods (with SwiGLU, RMSNorm, Post-norm)
+    @classmethod
+    def create_trm_style_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """
+        Create a small TRM-style model (~200K parameters).
+
+        Uses TRM architectural choices:
+        - SwiGLU activation (more expressive than SiLU)
+        - RMS normalization (more efficient than LayerNorm)
+        - Post-norm architecture (better gradient scaling)
+        - 4.0× FFN expansion (TRM uses 4.0 vs TRC's 2.0)
+        - Fixed initial states (nn.Buffer, not trained like TRM)
+        """
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=64,
+            num_heads=2,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=4,
+            L_layers=2,
+            use_gradient_truncation=True,
+            learnable_inits=False,  # TRM-style: Fixed initial states
+            # TRM-style components
+            activation_type="swiglu",
+            norm_type="rmsnorm",
+            norm_position="post",
+            expansion=4.0,  # TRM uses 4.0 (vs TRC default 2.0)
+        )
+        return cls(config)
+
+    @classmethod
+    def create_trm_style_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """
+        Create a medium TRM-style model (~800K parameters).
+
+        Uses TRM architectural choices for ablation study comparison.
+        """
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=128,
+            num_heads=4,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=4,
+            L_layers=2,
+            use_gradient_truncation=True,
+            learnable_inits=False,  # TRM-style: Fixed initial states
+            # TRM-style components
+            activation_type="swiglu",
+            norm_type="rmsnorm",
+            norm_position="post",
+            expansion=4.0,
+        )
+        return cls(config)
+
+    @classmethod
+    def create_trm_style_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+        """
+        Create a large TRM-style model (~2M parameters).
+
+        Uses TRM architectural choices for maximum fidelity.
+        """
+        config = TRCConfig(
+            state_dim=state_dim,
+            control_dim=control_dim,
+            control_horizon=control_horizon,
+            latent_dim=256,
+            num_heads=8,
+            use_two_level=True,
+            H_cycles=3,
+            L_cycles=6,
+            L_layers=3,
+            use_gradient_truncation=True,
+            learnable_inits=False,  # TRM-style: Fixed initial states
+            # TRM-style components
+            activation_type="swiglu",
+            norm_type="rmsnorm",
+            norm_position="post",
+            expansion=4.0,
         )
         return cls(config)

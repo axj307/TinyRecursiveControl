@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Understanding Latent Space in TRM Control</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            margin-top: 10px;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        h2 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 40px;
+        }
+
+        h3 {
+            color: #764ba2;
+            margin-top: 25px;
+        }
+
+        .content-box {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .definition {
+            background: #e3f2fd;
+            border-left: 5px solid #2196F3;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .example {
+            background: #f1f8e9;
+            border-left: 5px solid #8bc34a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .important {
+            background: #fff3e0;
+            border-left: 5px solid #ff9800;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .comment {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .keyword {
+            color: #f92672;
+        }
+
+        .string {
+            color: #e6db74;
+        }
+
+        .function {
+            color: #66d9ef;
+        }
+
+        .number {
+            color: #ae81ff;
+        }
+
+        .diagram {
+            background: white;
+            border: 2px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .navigation {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .nav-link {
+            color: #667eea;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            text-decoration: underline;
+        }
+
+        .key-point {
+            background: #e8eaf6;
+            border-left: 5px solid #3f51b5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .math {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .flowchart {
+            background: linear-gradient(to bottom, #f8f9fa, white);
+            border: 2px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-family: monospace;
+            line-height: 1.8;
+        }
+
+        .arrow {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        ul, ol {
+            line-height: 1.8;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        .highlight {
+            background: #fff59d;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Understanding Latent Space</h1>
+        <div class="subtitle">A Complete Guide for TRM Control Models</div>
+    </div>
+
+    <div class="navigation">
+        <strong>Quick Navigation:</strong>
+        <a href="#definition" class="nav-link">Definition</a>
+        <a href="#intuition" class="nav-link">Intuition</a>
+        <a href="#your-model" class="nav-link">In Your Model</a>
+        <a href="#why-use" class="nav-link">Why Use It</a>
+        <a href="#example" class="nav-link">Full Example</a>
+        <a href="#summary" class="nav-link">Summary</a>
+    </div>
+
+    <div class="content-box" id="definition">
+        <h2>What is Latent Space?</h2>
+
+        <div class="definition">
+            <strong>Simple Definition:</strong> A <span class="highlight">compressed, learned representation</span> of your data in a lower-dimensional space that captures the essential features.
+            <br><br>
+            Think of it as the neural network's <strong>"internal understanding"</strong> of your problem.
+        </div>
+
+        <div class="key-point">
+            <strong>Key Insight:</strong> Latent space is an abstract feature space where the model can reason about problems more effectively than in the raw input/output space.
+        </div>
+    </div>
+
+    <div class="content-box" id="intuition">
+        <h2>Intuitive Analogy</h2>
+
+        <h3>Example: Describing a Person</h3>
+
+        <div class="example">
+            <strong>High-dimensional input</strong> (many features):
+            <ul>
+                <li>Height: 175cm</li>
+                <li>Weight: 70kg</li>
+                <li>Eye color: Brown</li>
+                <li>Hair color: Black</li>
+                <li>Age: 30</li>
+                <li>Shoe size: 42</li>
+                <li>Voice pitch: 150Hz</li>
+                <li>... (100+ features)</li>
+            </ul>
+        </div>
+
+        <div class="flowchart">
+<span class="arrow">↓</span> Neural Network Encoder
+        </div>
+
+        <div class="example">
+            <strong>Latent representation</strong> (compressed essence):
+            <div class="code-block">latent_vector = [<span class="number">0.2</span>, <span class="number">-0.5</span>, <span class="number">0.8</span>, <span class="number">1.1</span>]  <span class="comment"># Just 4 numbers!</span></div>
+
+            <p>These 4 numbers <strong>encode all the important information</strong> about the person. They're abstract:</p>
+            <ul>
+                <li><code>latent[0]</code> might encode "physical size" (combines height, weight, shoe size)</li>
+                <li><code>latent[1]</code> might encode "appearance" (combines eye, hair color)</li>
+                <li><code>latent[2]</code> might encode "age-related features"</li>
+                <li><code>latent[3]</code> might encode other patterns</li>
+            </ul>
+
+            <p><strong>Important:</strong> The neural network <span class="highlight">learns</span> what these abstract features should represent during training!</p>
+        </div>
+    </div>
+
+    <div class="content-box" id="your-model">
+        <h2>Latent Space in Your Control Problem</h2>
+
+        <h3>Your Input Problem</h3>
+
+        <div class="code-block"><span class="comment"># Your control problem</span>
+current_state = [position=<span class="number">0.0</span>, velocity=<span class="number">0.0</span>]  <span class="comment"># 2 numbers</span>
+target_state = [position=<span class="number">1.0</span>, velocity=<span class="number">0.0</span>]   <span class="comment"># 2 numbers</span>
+time_remaining = <span class="number">5.0</span>                          <span class="comment"># 1 number</span>
+<span class="comment"># Total: 5 numbers describing the problem</span></div>
+
+        <div class="flowchart">
+<span class="arrow">↓</span> State Encoder (Neural Network)
+        </div>
+
+        <div class="code-block"><span class="comment"># Latent representation (z_initial)</span>
+z_initial = [<span class="number">0.23</span>, <span class="number">-0.45</span>, <span class="number">0.78</span>, ..., <span class="number">0.12</span>]  <span class="comment"># 128 numbers!</span></div>
+
+        <h3>What Happened?</h3>
+
+        <div class="important">
+            The encoder <strong>expanded</strong> 5 numbers → 128 numbers, but this isn't just padding!
+            <br><br>
+            The 128-dimensional latent vector encodes:
+            <ul>
+                <li>"How far do we need to travel?"</li>
+                <li>"What direction and speed?"</li>
+                <li>"How much time do we have?"</li>
+                <li>"Is this an easy or hard problem?"</li>
+                <li>"What control strategy should we use?"</li>
+                <li>... many other abstract patterns</li>
+            </ul>
+        </div>
+
+        <h3>The Three Latent States in Your TRM Model</h3>
+
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>Latent State</th>
+                    <th>Dimension</th>
+                    <th>Purpose</th>
+                    <th>What it Encodes</th>
+                </tr>
+                <tr>
+                    <td><strong>z_initial</strong></td>
+                    <td>[batch, 128]</td>
+                    <td>Problem encoding</td>
+                    <td>Understanding of the control problem: distance, time, difficulty</td>
+                </tr>
+                <tr>
+                    <td><strong>z_H</strong> (high-level)</td>
+                    <td>[batch, 128]</td>
+                    <td>Strategic planning</td>
+                    <td>Overall trajectory shape, control aggressiveness, when to brake</td>
+                </tr>
+                <tr>
+                    <td><strong>z_L</strong> (low-level)</td>
+                    <td>[batch, 128]</td>
+                    <td>Tactical execution</td>
+                    <td>Exact control magnitudes, fine-tuning, error corrections</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="content-box" id="why-use">
+        <h2>Why Use Latent Space?</h2>
+
+        <h3>1. Compress Complex Information</h3>
+
+        <div class="example">
+            <strong>High-dimensional raw data</strong> → <strong>Compact meaningful representation</strong>
+            <br><br>
+            Example from images (illustrative):
+            <div class="code-block">Raw image: <span class="number">224</span> × <span class="number">224</span> × <span class="number">3</span> = <span class="number">150,528</span> numbers (pixels)
+    <span class="arrow">↓</span>
+Latent: <span class="number">128</span> numbers (learned features)</div>
+
+            Those 128 numbers might encode: "This is a cat, sitting, orange color, indoors"
+        </div>
+
+        <h3>2. Enable Reasoning</h3>
+
+        <div class="code-block"><span class="comment"># In your model:</span>
+z_initial = <span class="function">encoder</span>(current, target)  <span class="comment"># Understand the problem</span>
+
+<span class="comment"># Recursive reasoning operates in latent space</span>
+z_H, z_L = <span class="function">recursive_reasoning</span>(z_initial, ...)  <span class="comment"># Think about solution</span>
+z_H = <span class="function">recursive_reasoning</span>(z_H, z_L, ...)        <span class="comment"># Refine thinking</span>
+z_H = <span class="function">recursive_reasoning</span>(z_H, z_L, ...)        <span class="comment"># Refine more</span>
+
+<span class="comment"># Decode back to control actions</span>
+controls = <span class="function">decoder</span>(z_H)  <span class="comment"># Output solution</span></div>
+
+        <div class="important">
+            <strong>It's easier to "think" in latent space</strong> than directly in raw state/control space!
+        </div>
+
+        <h3>3. Transfer Learning</h3>
+
+        <div class="example">
+            Similar problems map to similar latent representations:
+            <div class="code-block">Problem <span class="number">1</span>: [<span class="number">0</span>, <span class="number">0</span>] → [<span class="number">1</span>, <span class="number">0</span>]   →  z = [<span class="number">0.2</span>, <span class="number">-0.5</span>, ...]
+Problem <span class="number">2</span>: [<span class="number">0</span>, <span class="number">0</span>] → [<span class="number">0.9</span>, <span class="number">0</span>] →  z = [<span class="number">0.19</span>, <span class="number">-0.48</span>, ...]  <span class="comment"># Similar!</span>
+Problem <span class="number">3</span>: [<span class="number">0</span>, <span class="number">0</span>] → [<span class="number">-5</span>, <span class="number">2</span>]  →  z = [<span class="number">-1.3</span>, <span class="number">0.9</span>, ...]   <span class="comment"># Very different</span></div>
+
+            The model learns that similar problems have similar latent representations!
+        </div>
+    </div>
+
+    <div class="content-box">
+        <h2>Latent Space Operations in Your TRM Model</h2>
+
+        <h3>Step 1: Encoding (Raw → Latent)</h3>
+
+        <div class="diagram">File: src/models/encoders.py → ControlStateEncoder
+
+<span class="keyword">class</span> ControlStateEncoder(nn.Module):
+    <span class="keyword">def</span> <span class="function">forward</span>(<span class="keyword">self</span>, current_state, target_state, time_remaining):
+        <span class="comment"># Concatenate all input information</span>
+        x = torch.cat([current_state, target_state, time_remaining])
+        <span class="comment"># x.shape = [batch, 5]  ← 5-dimensional input space</span>
+
+        <span class="comment"># Neural network projects to latent space</span>
+        z = <span class="keyword">self</span>.encoder(x)
+        <span class="comment"># z.shape = [batch, 128]  ← 128-dimensional latent space</span>
+
+        <span class="keyword">return</span> z</div>
+
+        <div class="key-point">
+            <strong>What's in z_initial?</strong> Abstract features the network learned:
+            <ul>
+                <li>Difficulty of the problem</li>
+                <li>Rough control strategy needed</li>
+                <li>Expected trajectory characteristics</li>
+                <li>Error tolerance required</li>
+                <li>... (network decides what's useful!)</li>
+            </ul>
+        </div>
+
+        <h3>Step 2: Reasoning in Latent Space</h3>
+
+        <div class="diagram">File: recursive_reasoning.py:454-518
+
+<span class="comment"># Initialize latent states</span>
+z_H = H_init  <span class="comment"># [batch, 128] - Strategic latent state</span>
+z_L = L_init  <span class="comment"># [batch, 128] - Tactical latent state</span>
+
+<span class="comment"># Reasoning happens in 128-dimensional latent space!</span>
+<span class="keyword">for</span> k <span class="keyword">in</span> range(H_cycles):
+    <span class="comment"># Low-level reasoning (4 iterations in latent space)</span>
+    <span class="keyword">for</span> i <span class="keyword">in</span> range(L_cycles):
+        z_L = <span class="function">L_level</span>(z_L, z_H + z_initial + context)
+        <span class="comment"># z_L is being refined in latent space</span>
+
+    <span class="comment"># High-level reasoning (1 iteration in latent space)</span>
+    z_H = <span class="function">L_level</span>(z_H, z_L)
+    <span class="comment"># z_H is being refined in latent space</span></div>
+
+        <div class="important">
+            <strong>What's happening?</strong>
+            <ul>
+                <li>z_H and z_L are <strong>abstract representations</strong> of the control strategy</li>
+                <li>They're not controls themselves - they're "plans" or "ideas" about controls</li>
+                <li>The recursive reasoning <strong>refines these abstract ideas</strong> iteratively</li>
+            </ul>
+        </div>
+
+        <h3>Step 3: Decoding (Latent → Controls)</h3>
+
+        <div class="diagram">File: src/models/decoders.py → ControlSequenceDecoder
+
+<span class="keyword">class</span> ControlSequenceDecoder(nn.Module):
+    <span class="keyword">def</span> <span class="function">forward</span>(<span class="keyword">self</span>, z):
+        <span class="comment"># z.shape = [batch, 128]  ← Latent representation (abstract)</span>
+
+        <span class="comment"># Neural network projects back to control space</span>
+        controls = <span class="keyword">self</span>.decoder(z)
+        <span class="comment"># controls.shape = [batch, 15, 1]  ← Concrete control actions</span>
+
+        <span class="keyword">return</span> controls</div>
+
+        <div class="key-point">
+            <strong>What happened?</strong> Latent vector (abstract strategy) → Concrete control sequence
+            <br>
+            The decoder learned how to translate "ideas" into "actions"
+        </div>
+    </div>
+
+    <div class="content-box">
+        <h2>Properties of Good Latent Representations</h2>
+
+        <h3>1. Continuity</h3>
+        <div class="code-block">Problem A: [<span class="number">0</span>, <span class="number">0</span>] → [<span class="number">1</span>, <span class="number">0</span>]     z_A = [<span class="number">0.2</span>, <span class="number">-0.5</span>, <span class="number">0.8</span>, ...]
+Problem B: [<span class="number">0</span>, <span class="number">0</span>] → [<span class="number">1.1</span>, <span class="number">0</span>]   z_B = [<span class="number">0.22</span>, <span class="number">-0.48</span>, <span class="number">0.82</span>, ...]  <span class="comment"># Close to z_A!</span></div>
+        <p><strong>Small change in problem → Small change in latent representation</strong></p>
+
+        <h3>2. Meaningfulness</h3>
+        <div class="example">
+            Each dimension encodes something useful (learned automatically):
+            <div class="code-block">z[<span class="number">0</span>]  → <span class="string">"Distance to travel"</span>
+z[<span class="number">1</span>]  → <span class="string">"Initial velocity correction needed"</span>
+z[<span class="number">2</span>]  → <span class="string">"Time urgency"</span>
+z[<span class="number">3</span>]  → <span class="string">"Control aggressiveness"</span>
+... (network learns these patterns)</div>
+        </div>
+
+        <h3>3. Separability</h3>
+        <div class="code-block">Easy problems:    z ≈ [<span class="number">0.1</span>, <span class="number">0.2</span>, ...]   <span class="comment">(cluster in one region)</span>
+Hard problems:    z ≈ [<span class="number">-1.5</span>, <span class="number">2.1</span>, ...]  <span class="comment">(cluster in another region)</span>
+Impossible ones:  z ≈ [<span class="number">5.2</span>, <span class="number">-3.4</span>, ...]  <span class="comment">(outliers)</span></div>
+    </div>
+
+    <div class="content-box" id="example">
+        <h2>Complete Example: Tracing a Problem Through Latent Spaces</h2>
+
+        <div class="code-block"><span class="comment"># Problem: Move from [0, 0] to [1, 0]</span>
+current = torch.tensor([[<span class="number">0.0</span>, <span class="number">0.0</span>]])
+target = torch.tensor([[<span class="number">1.0</span>, <span class="number">0.0</span>]])
+
+<span class="comment"># ========================================</span>
+<span class="comment"># STEP 1: Encode problem to latent space</span>
+<span class="comment"># ========================================</span>
+z_initial = <span class="function">state_encoder</span>(current, target)
+<span class="keyword">print</span>(z_initial.shape)  <span class="comment"># torch.Size([1, 128])</span>
+<span class="keyword">print</span>(z_initial[<span class="number">0</span>, :<span class="number">5</span>])   <span class="comment"># First 5 dims: [0.234, -0.456, 0.789, 0.123, -0.321]</span>
+
+<span class="comment"># This 128-d vector "understands" the problem:</span>
+<span class="comment"># - Need to move right by 1.0</span>
+<span class="comment"># - Starting from rest</span>
+<span class="comment"># - Medium difficulty</span>
+<span class="comment"># (These are abstract - not explicit features!)</span>
+
+<span class="comment"># ========================================</span>
+<span class="comment"># STEP 2: Initialize reasoning latents</span>
+<span class="comment"># ========================================</span>
+z_H = H_init  <span class="comment"># [0.012, -0.008, 0.015, ..., 0.003]</span>
+z_L = L_init  <span class="comment"># [0.009, 0.011, -0.007, ..., -0.002]</span>
+
+<span class="comment"># ========================================</span>
+<span class="comment"># STEP 3: Recursive reasoning (in latent space!)</span>
+<span class="comment"># ========================================</span>
+
+<span class="comment"># H_cycle 0:</span>
+<span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">4</span>):  <span class="comment"># L_cycles</span>
+    z_L = <span class="function">L_level</span>(z_L, z_H + z_initial)
+    <span class="comment"># z_L evolves: [0.009, ...] → [0.15, ...] → [0.22, ...] → [0.28, ...]</span>
+    <span class="comment"># Learning detailed execution strategy</span>
+
+z_H = <span class="function">L_level</span>(z_H, z_L)
+<span class="comment"># z_H evolves: [0.012, ...] → [0.18, ...]</span>
+<span class="comment"># Learning high-level strategy</span>
+
+controls_0 = <span class="function">decoder</span>(z_H)  <span class="comment"># Generate controls from strategic latent</span>
+
+<span class="comment"># H_cycle 1: z_L and z_H continue refining...</span>
+<span class="comment"># H_cycle 2: final refinement...</span>
+
+<span class="comment"># ========================================</span>
+<span class="comment"># STEP 4: Decode final latent to controls</span>
+<span class="comment"># ========================================</span>
+controls_final = <span class="function">decoder</span>(z_H)
+<span class="keyword">print</span>(controls_final.shape)  <span class="comment"># torch.Size([1, 15, 1])</span>
+<span class="keyword">print</span>(controls_final[<span class="number">0</span>, :, <span class="number">0</span>])  <span class="comment"># [0.2, 0.3, 0.4, ..., -0.1]</span></div>
+
+        <div class="important">
+            <strong>Key insight:</strong> All the "thinking" happens in the 128-dimensional latent space! The controls are only generated at the end.
+        </div>
+    </div>
+
+    <div class="content-box">
+        <h2>Mathematical View</h2>
+
+        <h3>Encoder: Input space → Latent space</h3>
+        <div class="code-block">E: ℝ⁵ → ℝ¹²⁸
+E([x, x_target, t]) = z</div>
+
+        <h3>Reasoning: Latent space → Latent space</h3>
+        <div class="code-block">R: ℝ¹²⁸ → ℝ¹²⁸
+z' = R(z, context)</div>
+        <p>Applied recursively: z₀ → z₁ → z₂ → z₃</p>
+
+        <h3>Decoder: Latent space → Control space</h3>
+        <div class="code-block">D: ℝ¹²⁸ → ℝ¹⁵ˣ¹
+D(z) = controls</div>
+    </div>
+
+    <div class="content-box">
+        <h2>Why Two Latent States (z_H and z_L)?</h2>
+
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>State</th>
+                    <th>Role</th>
+                    <th>Encodes</th>
+                    <th>Analogy</th>
+                </tr>
+                <tr>
+                    <td><strong>z_H</strong><br>(High-level)</td>
+                    <td>Strategic planning</td>
+                    <td>
+                        <ul>
+                            <li>Overall trajectory shape</li>
+                            <li>Aggressive or conservative?</li>
+                            <li>When to accelerate/brake?</li>
+                        </ul>
+                    </td>
+                    <td>Architect's blueprint</td>
+                </tr>
+                <tr>
+                    <td><strong>z_L</strong><br>(Low-level)</td>
+                    <td>Tactical execution</td>
+                    <td>
+                        <ul>
+                            <li>Exact control magnitudes</li>
+                            <li>Fine-tuning adjustments</li>
+                            <li>Error corrections</li>
+                        </ul>
+                    </td>
+                    <td>Contractor's detailed plan</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="important">
+            <strong>Why separate?</strong> Different types of reasoning benefit from different representations! The two-level hierarchy allows the model to separate strategic thinking from tactical execution.
+        </div>
+    </div>
+
+    <div class="content-box">
+        <h2>Why Is Latent Space Powerful?</h2>
+
+        <ol>
+            <li><strong>Compression:</strong> 5 input numbers → 128 latent features (richer representation)</li>
+            <li><strong>Abstraction:</strong> Reasoning operates on "ideas" not raw numbers</li>
+            <li><strong>Compositionality:</strong> Can combine features (z_H + z_L + z_initial)</li>
+            <li><strong>Iterative refinement:</strong> Easy to refine abstract ideas iteratively</li>
+            <li><strong>Generalization:</strong> Similar problems → similar latents → similar solutions</li>
+        </ol>
+
+        <div class="key-point">
+            The neural network <strong>learns what features to put in latent space</strong> by training on 10K examples! You don't manually define what z[0], z[1], etc. mean - the network figures it out automatically to minimize prediction error.
+        </div>
+    </div>
+
+    <div class="content-box" id="summary">
+        <h2>Summary</h2>
+
+        <div class="important">
+            <h3>Latent space in your TRM model:</h3>
+            <ul>
+                <li><strong>What it is:</strong> 128-dimensional vector encoding the "essence" of the control problem</li>
+                <li><strong>Where it comes from:</strong> Learned by the encoder during training</li>
+                <li><strong>What it contains:</strong> Abstract features like problem difficulty, required strategy, trajectory characteristics</li>
+                <li><strong>Why it's useful:</strong> Easier to reason about controls in this compressed, meaningful space</li>
+                <li><strong>Two-level:</strong> z_H (strategy) and z_L (execution) allow hierarchical reasoning</li>
+            </ul>
+        </div>
+
+        <div class="key-point">
+            <h3>The Magic:</h3>
+            <p>The neural network <span class="highlight">learns what features to put in latent space</span> by training on 10K examples! You don't manually define what z[0], z[1], etc. mean - the network figures it out automatically to minimize prediction error.</p>
+        </div>
+
+        <div class="flowchart">
+<strong>Complete Flow:</strong>
+
+Raw Problem (5 numbers)
+    <span class="arrow">↓</span> Encoder
+Latent Understanding (128 numbers) = z_initial
+    <span class="arrow">↓</span> Initialize
+z_H (strategy, 128 numbers) + z_L (execution, 128 numbers)
+    <span class="arrow">↓</span> Recursive Reasoning (in latent space)
+Refined z_H + Refined z_L
+    <span class="arrow">↓</span> Decoder
+Control Sequence (15 actions)
+    <span class="arrow">↓</span> Simulator
+Final State (2 numbers)
+        </div>
+    </div>
+
+    <div class="content-box">
+        <h2>Further Reading</h2>
+        <ul>
+            <li><a href="TRM_Model_Architecture_Explained.html">TRM Model Architecture Explained</a></li>
+            <li><a href="TRM_Training_Pipeline_Explained.html">TRM Training Pipeline Explained</a></li>
+            <li><a href="AI/TwoLevel_Architecture_Guide.md">Two-Level Architecture Guide</a></li>
+            <li><a href="AI/TRM_vs_TRC_Comparison.md">TRM vs TRC Comparison</a></li>
+        </ul>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+        <p style="color: #666;">Generated for TinyRecursiveControl Project</p>
+        <p style="color: #666; font-size: 0.9em;">Understanding how neural networks reason in abstract feature spaces</p>
+    </div>
+</body>
+</html>
