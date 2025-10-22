@@ -31,11 +31,7 @@ data/**/*.hdf5
 data/**/*.h5
 
 # Model checkpoints and training outputs
-outputs/**/*.pt
-outputs/**/*.pth
-outputs/**/*.ckpt
-outputs/**/*.png
-outputs/**/*.pdf
+outputs/
 *.pt
 *.pth
 *.ckpt
