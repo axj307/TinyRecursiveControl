@@ -186,9 +186,9 @@ def visualize_multiple_trajectories(
                    alpha=alpha_light)
         ax_pos.scatter([0], [initial[0, 0].item()], color=color, s=80,
                       marker='o', edgecolors='black', linewidths=1, zorder=5)
-        if i == 0:  # Show target only once
-            ax_pos.axhline(y=target[0, 0].item(), color='red', linestyle=':',
-                          linewidth=2, label='Target', alpha=0.6)
+        # Show each trajectory's target in matching color
+        ax_pos.axhline(y=target[0, 0].item(), color=color, linestyle=':',
+                      linewidth=1.5, alpha=0.7, zorder=3)
 
         # Velocity vs Time
         ax_vel.plot(trc_times, trc_states[:, 1], '-', color=color, linewidth=2,
@@ -197,9 +197,9 @@ def visualize_multiple_trajectories(
                    alpha=alpha_light)
         ax_vel.scatter([0], [initial[0, 1].item()], color=color, s=80,
                       marker='o', edgecolors='black', linewidths=1, zorder=5)
-        if i == 0:
-            ax_vel.axhline(y=target[0, 1].item(), color='red', linestyle=':',
-                          linewidth=2, label='Target', alpha=0.6)
+        # Show each trajectory's target in matching color
+        ax_vel.axhline(y=target[0, 1].item(), color=color, linestyle=':',
+                      linewidth=1.5, alpha=0.7, zorder=3)
 
         # Control Inputs vs Time
         control_times = trc_times[:-1]
@@ -217,22 +217,22 @@ def visualize_multiple_trajectories(
         ax_phase.scatter([initial[0, 0].item()], [initial[0, 1].item()],
                         color=color, s=100, marker='o', edgecolors='black',
                         linewidths=1.5, zorder=5)
-        if i == 0:
-            ax_phase.scatter([target[0, 0].item()], [target[0, 1].item()],
-                           color='red', s=200, marker='*', label='Target',
-                           edgecolors='black', linewidths=2, zorder=10)
+        # Show each trajectory's target in matching color
+        ax_phase.scatter([target[0, 0].item()], [target[0, 1].item()],
+                        color=color, s=150, marker='*',
+                        edgecolors='black', linewidths=1.5, zorder=10, alpha=0.8)
 
     # Format Position plot
     ax_pos.set_ylabel('Position', fontsize=12, fontweight='bold')
     ax_pos.set_xlabel('Time (s)', fontsize=11)
-    ax_pos.set_title('Position vs Time\n(Solid=TRC, Dashed=LQR)', fontsize=12, fontweight='bold')
+    ax_pos.set_title('Position vs Time\n(Solid=TRC, Dashed=LQR, Dotted=Targets)', fontsize=12, fontweight='bold')
     ax_pos.legend(fontsize=9, loc='best', ncol=2)
     ax_pos.grid(True, alpha=0.3)
 
     # Format Velocity plot
     ax_vel.set_ylabel('Velocity', fontsize=12, fontweight='bold')
     ax_vel.set_xlabel('Time (s)', fontsize=11)
-    ax_vel.set_title('Velocity vs Time\n(Solid=TRC, Dashed=LQR)', fontsize=12, fontweight='bold')
+    ax_vel.set_title('Velocity vs Time\n(Solid=TRC, Dashed=LQR, Dotted=Targets)', fontsize=12, fontweight='bold')
     ax_vel.legend(fontsize=9, loc='best', ncol=2)
     ax_vel.grid(True, alpha=0.3)
 
@@ -246,7 +246,7 @@ def visualize_multiple_trajectories(
     # Format Phase Space plot
     ax_phase.set_xlabel('Position', fontsize=12, fontweight='bold')
     ax_phase.set_ylabel('Velocity', fontsize=12, fontweight='bold')
-    ax_phase.set_title('Phase Space\n(Solid=TRC, Dashed=LQR)', fontsize=12, fontweight='bold')
+    ax_phase.set_title('Phase Space\n(Solid=TRC, Dashed=LQR, Stars=Targets)', fontsize=12, fontweight='bold')
     ax_phase.legend(fontsize=9, loc='best', ncol=2)
     ax_phase.grid(True, alpha=0.3)
 
