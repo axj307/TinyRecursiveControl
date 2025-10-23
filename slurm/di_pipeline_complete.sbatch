@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:1
 
 echo "========================================================================"
-echo "TinyRecursiveControl - Double Integrator Complete Pipeline"
+echo "TinyRecursiveControl - Double Integrator Pipeline (Refactored)"
 echo "========================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
@@ -63,82 +63,65 @@ echo ""
 # CONFIGURATION
 # =============================================================================
 
-# Double Integrator Configuration
-SYSTEM_NAME="double_integrator"
+# Problem Configuration
+PROBLEM="double_integrator"
 NUM_TRAIN_SAMPLES=10000
 NUM_TEST_SAMPLES=1000
-NUM_STEPS=15
-TIME_HORIZON=5.0
-CONTROL_BOUNDS=8.0
-USE_MINIMUM_ENERGY=true  # Use minimum-energy controller (98% better than LQR)
 
 # Training Configuration
-MODEL_SIZE="medium"
 EPOCHS=100
 BATCH_SIZE=64
 LEARNING_RATE=1e-3
-PATIENCE=20
-SCHEDULER="cosine"
 
 # Output Configuration
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="outputs/di_pipeline_${SLURM_JOB_ID}_${TIMESTAMP}"
-TRAIN_DATA_DIR="data/me_train"
-TEST_DATA_DIR="data/me_test"
+OUTPUT_DIR="outputs/${PROBLEM}_pipeline_${SLURM_JOB_ID}_${TIMESTAMP}"
+DATA_DIR="data/${PROBLEM}"
 
 echo "Pipeline Configuration:"
-echo "  System: $SYSTEM_NAME"
-echo "  Controller: $([ "$USE_MINIMUM_ENERGY" = true ] && echo "Minimum-Energy (optimal)" || echo "LQR")"
+echo "  Problem: $PROBLEM"
 echo "  Training samples: $NUM_TRAIN_SAMPLES"
 echo "  Test samples: $NUM_TEST_SAMPLES"
-echo "  Control horizon: $NUM_STEPS steps"
-echo "  Time horizon: $TIME_HORIZON s"
-echo "  Control bounds: ±$CONTROL_BOUNDS"
-echo "  Model size: $MODEL_SIZE"
+echo "  Model type: two_level_medium"
 echo "  Training epochs: $EPOCHS"
 echo "  Output directory: $OUTPUT_DIR"
+echo "  Data directory: $DATA_DIR"
 echo ""
 
 # Create output directories
 mkdir -p "$OUTPUT_DIR"
-mkdir -p "$TRAIN_DATA_DIR"
-mkdir -p "$TEST_DATA_DIR"
+mkdir -p "$DATA_DIR"
+mkdir -p "slurm_logs"
 
 # =============================================================================
 # PHASE 1: DATA GENERATION
 # =============================================================================
 
 echo "========================================================================"
-echo "PHASE 1: Optimal Control Data Generation"
+echo "PHASE 1: Dataset Generation"
 echo "========================================================================"
 echo ""
 
-if [ "$USE_MINIMUM_ENERGY" = true ]; then
-    echo "Using Minimum-Energy Controller (98% better than LQR)"
-    ME_FLAG="--use_minimum_energy"
-else
-    echo "Using LQR Controller"
-    ME_FLAG=""
-fi
-echo ""
+TRAIN_DATA="$DATA_DIR/${PROBLEM}_dataset_train.npz"
+TEST_DATA="$DATA_DIR/${PROBLEM}_dataset_test.npz"
 
 # Generate training data
-if [ -f "$TRAIN_DATA_DIR/lqr_dataset.npz" ]; then
-    echo "✓ Training data already exists: $TRAIN_DATA_DIR/lqr_dataset.npz"
+if [ -f "$TRAIN_DATA" ]; then
+    echo "✓ Training data already exists: $TRAIN_DATA"
     echo "  Skipping training data generation"
 else
     echo "Generating training data..."
+    echo "  Problem: $PROBLEM"
     echo "  Samples: $NUM_TRAIN_SAMPLES"
-    echo "  Output: $TRAIN_DATA_DIR"
+    echo "  Output: $DATA_DIR"
 
-    python src/data/lqr_generator.py \
+    python scripts/generate_dataset.py \
+        --problem $PROBLEM \
         --num_samples $NUM_TRAIN_SAMPLES \
-        --output_dir $TRAIN_DATA_DIR \
-        --num_steps $NUM_STEPS \
-        --time_horizon $TIME_HORIZON \
-        --control_bounds $CONTROL_BOUNDS \
-        $ME_FLAG \
-        --seed 42
+        --output_dir $DATA_DIR \
+        --split train \
+        --seed 42 \
+        --verbose
 
     if [ $? -ne 0 ]; then
         echo "ERROR: Training data generation failed!"
@@ -151,22 +134,22 @@ fi
 echo ""
 
 # Generate test data
-if [ -f "$TEST_DATA_DIR/lqr_dataset.npz" ]; then
-    echo "✓ Test data already exists: $TEST_DATA_DIR/lqr_dataset.npz"
+if [ -f "$TEST_DATA" ]; then
+    echo "✓ Test data already exists: $TEST_DATA"
     echo "  Skipping test data generation"
 else
     echo "Generating test data..."
+    echo "  Problem: $PROBLEM"
     echo "  Samples: $NUM_TEST_SAMPLES"
-    echo "  Output: $TEST_DATA_DIR"
+    echo "  Output: $DATA_DIR"
 
-    python src/data/lqr_generator.py \
+    python scripts/generate_dataset.py \
+        --problem $PROBLEM \
         --num_samples $NUM_TEST_SAMPLES \
-        --output_dir $TEST_DATA_DIR \
-        --num_steps $NUM_STEPS \
-        --time_horizon $TIME_HORIZON \
-        --control_bounds $CONTROL_BOUNDS \
-        $ME_FLAG \
-        --seed 123
+        --output_dir $DATA_DIR \
+        --split test \
+        --seed 123 \
+        --verbose
 
     if [ $? -ne 0 ]; then
         echo "ERROR: Test data generation failed!"
@@ -178,8 +161,8 @@ fi
 
 echo ""
 echo "Data generation complete!"
-echo "  Training data: $TRAIN_DATA_DIR/lqr_dataset.npz"
-echo "  Test data: $TEST_DATA_DIR/lqr_dataset.npz"
+echo "  Training data: $TRAIN_DATA"
+echo "  Test data: $TEST_DATA"
 echo ""
 
 # =============================================================================
@@ -187,30 +170,33 @@ echo ""
 # =============================================================================
 
 echo "========================================================================"
-echo "PHASE 2: Supervised Training"
+echo "PHASE 2: Model Training"
 echo "========================================================================"
 echo ""
 
 TRAIN_OUTPUT_DIR="$OUTPUT_DIR/training"
 
 echo "Training TinyRecursiveControl model..."
-echo "  Data: $TRAIN_DATA_DIR/lqr_dataset.npz"
-echo "  Model size: $MODEL_SIZE"
+echo "  Problem: $PROBLEM"
+echo "  Train data: $TRAIN_DATA"
+echo "  Eval data: $TEST_DATA"
+echo "  Model type: two_level_medium"
 echo "  Epochs: $EPOCHS"
 echo "  Batch size: $BATCH_SIZE"
 echo "  Learning rate: $LEARNING_RATE"
 echo "  Output: $TRAIN_OUTPUT_DIR"
 echo ""
 
-python src/training/supervised_trainer.py \
-    --data "$TRAIN_DATA_DIR/lqr_dataset.npz" \
-    --model_size $MODEL_SIZE \
+python scripts/train_trc.py \
+    --problem $PROBLEM \
+    --data_path "$TRAIN_DATA" \
+    --eval_data_path "$TEST_DATA" \
+    --model_type two_level_medium \
     --epochs $EPOCHS \
     --batch_size $BATCH_SIZE \
-    --lr $LEARNING_RATE \
-    --patience $PATIENCE \
-    --scheduler $SCHEDULER \
-    --output_dir "$TRAIN_OUTPUT_DIR"
+    --learning_rate $LEARNING_RATE \
+    --output_dir "$TRAIN_OUTPUT_DIR" \
+    --save_best_only
 
 TRAINING_EXIT_CODE=$?
 
@@ -239,14 +225,16 @@ echo ""
 EVAL_OUTPUT="$OUTPUT_DIR/evaluation_results.json"
 
 echo "Evaluating trained model on test set..."
+echo "  Problem: $PROBLEM"
 echo "  Checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
-echo "  Test data: $TEST_DATA_DIR/lqr_dataset.npz"
+echo "  Test data: $TEST_DATA"
 echo "  Output: $EVAL_OUTPUT"
 echo ""
 
 python src/evaluation/evaluator.py \
+    --problem $PROBLEM \
     --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
-    --test_data "$TEST_DATA_DIR/lqr_dataset.npz" \
+    --test_data "$TEST_DATA" \
     --output "$EVAL_OUTPUT" \
     --batch_size $BATCH_SIZE
 
@@ -264,7 +252,7 @@ echo "  Results: $EVAL_OUTPUT"
 echo ""
 
 # =============================================================================
-# PHASE 4: BASELINE COMPARISON
+# PHASE 4: BASELINE COMPARISON (Optional)
 # =============================================================================
 
 echo "========================================================================"
@@ -274,33 +262,37 @@ echo ""
 
 COMPARISON_OUTPUT="$OUTPUT_DIR/comparison_results.json"
 
-echo "Running comparison with baselines..."
-echo "  TRC checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
-echo "  Test data: $TEST_DATA_DIR/lqr_dataset.npz"
-echo "  Output: $COMPARISON_OUTPUT"
-echo ""
-
-python comparison_experiment.py \
-    --test_data "$TEST_DATA_DIR/lqr_dataset.npz" \
-    --trc_checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
-    --output "$COMPARISON_OUTPUT"
-
-COMPARISON_EXIT_CODE=$?
-
-if [ $COMPARISON_EXIT_CODE -ne 0 ]; then
+if [ -f "comparison_experiment.py" ]; then
+    echo "Running comparison with baselines..."
+    echo "  TRC checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
+    echo "  Test data: $TEST_DATA"
+    echo "  Output: $COMPARISON_OUTPUT"
     echo ""
-    echo "WARNING: Comparison experiment failed with exit code $COMPARISON_EXIT_CODE"
-    echo "Continuing with pipeline..."
+
+    python comparison_experiment.py \
+        --test_data "$TEST_DATA" \
+        --trc_checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
+        --output "$COMPARISON_OUTPUT"
+
+    COMPARISON_EXIT_CODE=$?
+
+    if [ $COMPARISON_EXIT_CODE -ne 0 ]; then
+        echo ""
+        echo "WARNING: Comparison experiment failed with exit code $COMPARISON_EXIT_CODE"
+        echo "Continuing with pipeline..."
+    else
+        echo ""
+        echo "✓ Comparison complete!"
+        echo "  Results: $COMPARISON_OUTPUT"
+    fi
 else
-    echo ""
-    echo "✓ Comparison complete!"
-    echo "  Results: $COMPARISON_OUTPUT"
+    echo "comparison_experiment.py not found, skipping baseline comparison"
 fi
 
 echo ""
 
 # =============================================================================
-# PHASE 5: TRAJECTORY VISUALIZATION
+# PHASE 5: TRAJECTORY VISUALIZATION (Optional)
 # =============================================================================
 
 echo "========================================================================"
@@ -310,31 +302,35 @@ echo ""
 
 VIZ_OUTPUT_DIR="$OUTPUT_DIR/visualizations"
 
-echo "Generating trajectory visualizations..."
-echo "  Checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
-echo "  Test data: $TEST_DATA_DIR/lqr_dataset.npz"
-echo "  Output directory: $VIZ_OUTPUT_DIR"
-echo ""
-
-python visualize_trajectories.py \
-    --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
-    --test_data "$TEST_DATA_DIR/lqr_dataset.npz" \
-    --output_dir "$VIZ_OUTPUT_DIR" \
-    --num_examples 6
-
-VIZ_EXIT_CODE=$?
-
-if [ $VIZ_EXIT_CODE -ne 0 ]; then
+if [ -f "visualize_trajectories.py" ]; then
+    echo "Generating trajectory visualizations..."
+    echo "  Checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
+    echo "  Test data: $TEST_DATA"
+    echo "  Output directory: $VIZ_OUTPUT_DIR"
     echo ""
-    echo "WARNING: Visualization failed with exit code $VIZ_EXIT_CODE"
-    echo "Continuing with pipeline..."
+
+    python visualize_trajectories.py \
+        --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
+        --test_data "$TEST_DATA" \
+        --output_dir "$VIZ_OUTPUT_DIR" \
+        --num_examples 6
+
+    VIZ_EXIT_CODE=$?
+
+    if [ $VIZ_EXIT_CODE -ne 0 ]; then
+        echo ""
+        echo "WARNING: Visualization failed with exit code $VIZ_EXIT_CODE"
+        echo "Continuing with pipeline..."
+    else
+        echo ""
+        echo "✓ Visualizations complete!"
+        echo "  Saved to: $VIZ_OUTPUT_DIR/"
+        echo "    - trajectories_comparison.png"
+        echo "    - detailed_example.png"
+        echo "    - error_distribution.png"
+    fi
 else
-    echo ""
-    echo "✓ Visualizations complete!"
-    echo "  Saved to: $VIZ_OUTPUT_DIR/"
-    echo "    - trajectories_comparison.png"
-    echo "    - detailed_example.png"
-    echo "    - error_distribution.png"
+    echo "visualize_trajectories.py not found, skipping visualization"
 fi
 
 echo ""
@@ -358,31 +354,29 @@ cat > "$REPORT_FILE" << EOF
 **Job ID**: $SLURM_JOB_ID
 **Date**: $(date)
 **Node**: $SLURMD_NODENAME
-**Duration**: Started $(date)
+**Problem**: $PROBLEM
 
 ---
 
 ## Configuration
 
-### System Parameters
+### Problem Configuration
 - **Control System**: Double Integrator (2D linear dynamics)
 - **State Space**: [position, velocity]
 - **Control Input**: acceleration
-- **Control Horizon**: $NUM_STEPS steps
-- **Time Horizon**: $TIME_HORIZON seconds
-- **Control Bounds**: ±$CONTROL_BOUNDS
+- **Configuration**: \`configs/problems/${PROBLEM}.yaml\`
 
 ### Data Generation
 - **Training Samples**: $NUM_TRAIN_SAMPLES
 - **Test Samples**: $NUM_TEST_SAMPLES
-- **Training Data**: \`$TRAIN_DATA_DIR/lqr_dataset.npz\`
-- **Test Data**: \`$TEST_DATA_DIR/lqr_dataset.npz\`
+- **Training Data**: \`$TRAIN_DATA\`
+- **Test Data**: \`$TEST_DATA\`
 
 ### Model Configuration
 - **Architecture**: TinyRecursiveControl
 - **Model Size**: $MODEL_SIZE
-- **Training Approach**: Supervised Learning (imitating LQR optimal controls)
-- **Recursive Cycles**: 3 (iterative refinement)
+- **Training Approach**: Supervised Learning (imitating optimal controls)
+- **Recursive Refinement**: Enabled
 
 ### Training Configuration
 - **Epochs**: $EPOCHS
@@ -396,23 +390,23 @@ cat > "$REPORT_FILE" << EOF
 
 ## Pipeline Phases Completed
 
-1. ✅ **Optimal Control Data Generation**
-   - Generated optimal control trajectories using $([ "$USE_MINIMUM_ENERGY" = true ] && echo "Minimum-Energy Controller" || echo "LQR")
+1. ✅ **Dataset Generation**
+   - Generated optimal control trajectories using problem-specific controller
    - Training and test sets with diverse initial conditions
 
-2. ✅ **Supervised Training**
+2. ✅ **Model Training**
    - Trained TinyRecursiveControl to imitate optimal control policies
    - Model checkpoint: \`$TRAIN_OUTPUT_DIR/best_model.pt\`
 
 3. ✅ **Model Evaluation**
-   - Evaluated on held-out test set
+   - Evaluated on held-out test set using problem-specific dynamics
    - Results: \`$EVAL_OUTPUT\`
 
-4. ✅ **Baseline Comparison**
-   - Compared TRC vs Random vs Optimal Controller
+4. ✅ **Baseline Comparison** (if available)
+   - Compared TRC vs baselines
    - Analysis: \`$COMPARISON_OUTPUT\`
 
-5. ✅ **Trajectory Visualization**
+5. ✅ **Trajectory Visualization** (if available)
    - Generated publication-quality plots
    - Location: \`$VIZ_OUTPUT_DIR/\`
 
@@ -427,11 +421,11 @@ $OUTPUT_DIR/
 │   ├── training_stats.json        # Training metrics history
 │   └── training_curves.png        # Loss curves visualization
 ├── evaluation_results.json        # Test set performance metrics
-├── comparison_results.json        # TRC vs baselines comparison
-├── visualizations/
-│   ├── trajectories_comparison.png    # Multiple trajectory examples
-│   ├── detailed_example.png           # Single case detailed view
-│   └── error_distribution.png         # Performance statistics
+├── comparison_results.json        # TRC vs baselines comparison (if available)
+├── visualizations/                # Trajectory visualizations (if available)
+│   ├── trajectories_comparison.png
+│   ├── detailed_example.png
+│   └── error_distribution.png
 └── pipeline_report.md             # This report
 \`\`\`
 
@@ -443,52 +437,57 @@ See the generated JSON files and visualizations for detailed results:
 
 - **Training Performance**: Check \`training/training_stats.json\` for epoch-by-epoch metrics
 - **Test Set Evaluation**: See \`evaluation_results.json\` for final performance
-- **Comparison Analysis**: Review \`comparison_results.json\` for TRC vs LQR gap
+- **Comparison Analysis**: Review \`comparison_results.json\` for TRC vs baseline gap
 - **Visual Analysis**: Examine plots in \`visualizations/\` directory
 
 ---
 
-## Next Steps
+## Using This Model
 
-1. **Review Results**
-   - Examine training curves: \`$TRAIN_OUTPUT_DIR/training_curves.png\`
-   - Check evaluation metrics: \`$EVAL_OUTPUT\`
-   - View trajectory plots: \`$VIZ_OUTPUT_DIR/\`
+The trained model can be loaded and used for inference:
 
-2. **Model Usage**
-   \`\`\`bash
-   # Use trained model for inference
-   python -c "
-   import torch
-   from src.models import TinyRecursiveControl
+\`\`\`python
+import torch
+from src.models import TinyRecursiveControl
+from src.environments import get_problem
 
-   # Load model
-   checkpoint = torch.load('$TRAIN_OUTPUT_DIR/best_model.pt')
-   model = TinyRecursiveControl.create_medium()
-   model.load_state_dict(checkpoint['model_state_dict'])
-   model.eval()
+# Load problem instance
+problem = get_problem("$PROBLEM")
 
-   # Make predictions
-   initial_state = torch.tensor([[5.0, -2.0]])  # [position, velocity]
-   target_state = torch.tensor([[0.0, 0.0]])
+# Load model
+checkpoint = torch.load("$TRAIN_OUTPUT_DIR/best_model.pt")
+model = TinyRecursiveControl.create_$MODEL_SIZE(
+    state_dim=problem.state_dim,
+    control_dim=problem.control_dim,
+    control_horizon=problem.horizon
+)
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
 
-   with torch.no_grad():
-       output = model(initial_state, target_state)
-       controls = output['controls']
+# Make predictions
+initial_state = torch.tensor([[5.0, -2.0]])  # [position, velocity]
+target_state = torch.tensor([[0.0, 0.0]])
 
-   print('Predicted control sequence:', controls.shape)
-   "
-   \`\`\`
+with torch.no_grad():
+    output = model(initial_state, target_state)
+    controls = output['controls']
 
-3. **Extend to Other Systems**
-   - Create similar pipelines for other control problems
-   - Follow naming convention: \`<system>_pipeline_complete.sbatch\`
-   - Examples: pendulum, cartpole, quadrotor, etc.
+print('Predicted control sequence:', controls.shape)
+\`\`\`
 
-4. **Hyperparameter Tuning**
-   - Experiment with different model sizes (small, medium, large)
-   - Try different training configurations
-   - Adjust recursive refinement cycles
+---
+
+## Adding New Problems
+
+To create a similar pipeline for other control problems:
+
+1. Create new environment class: \`src/environments/my_problem.py\`
+2. Add to registry: \`src/environments/__init__.py\`
+3. Create config: \`configs/problems/my_problem.yaml\`
+4. Create pipeline: \`slurm/my_problem_pipeline.sbatch\`
+5. Run: \`sbatch slurm/my_problem_pipeline.sbatch\`
+
+See \`docs/ADDING_NEW_PROBLEMS.md\` for detailed guide.
 
 ---
 
@@ -511,6 +510,7 @@ echo ""
 echo "Job Summary:"
 echo "  Job ID: $SLURM_JOB_ID"
 echo "  Node: $SLURMD_NODENAME"
+echo "  Problem: $PROBLEM"
 echo "  Started: $(date)"
 echo "  Status: ✅ SUCCESS"
 echo ""
@@ -518,19 +518,12 @@ echo "Outputs:"
 echo "  Main directory: $OUTPUT_DIR/"
 echo "  Trained model: $TRAIN_OUTPUT_DIR/best_model.pt"
 echo "  Evaluation: $EVAL_OUTPUT"
-echo "  Visualizations: $VIZ_OUTPUT_DIR/"
 echo "  Report: $REPORT_FILE"
-echo ""
-echo "Exit codes:"
-echo "  Training: $TRAINING_EXIT_CODE"
-echo "  Evaluation: $EVAL_EXIT_CODE"
-echo "  Comparison: $COMPARISON_EXIT_CODE"
-echo "  Visualization: $VIZ_EXIT_CODE"
 echo ""
 echo "Next steps:"
 echo "  1. Review results: cat $REPORT_FILE"
 echo "  2. View training curves: see $TRAIN_OUTPUT_DIR/training_curves.png"
-echo "  3. Check visualizations: see $VIZ_OUTPUT_DIR/"
+echo "  3. Check evaluation: cat $EVAL_OUTPUT"
 echo "  4. Examine model: $TRAIN_OUTPUT_DIR/best_model.pt"
 echo ""
 echo "========================================================================"

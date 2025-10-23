@@ -16,6 +16,9 @@ build/
 .ipynb_checkpoints
 *.ipynb
 
+# HTML documentation (kept locally for reference)
+docs/html/
+
 # IDEs
 .vscode/
 .idea/
@@ -29,6 +32,7 @@ data/**/*.npz
 data/**/*.pkl
 data/**/*.hdf5
 data/**/*.h5
+data/**/*.json
 
 # Model checkpoints and training outputs
 outputs/
