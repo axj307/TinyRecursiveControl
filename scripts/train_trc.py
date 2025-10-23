@@ -318,8 +318,9 @@ def plot_training_curves(stats_dict: Dict, output_dir: Path):
     axes[0].set_xlabel('Epoch', fontsize=11)
     axes[0].set_ylabel('Loss', fontsize=11)
     axes[0].set_title('Training and Validation Loss', fontsize=12, fontweight='bold')
+    axes[0].set_yscale('log')  # Use log scale for better visibility
     axes[0].legend(fontsize=10)
-    axes[0].grid(True, alpha=0.3)
+    axes[0].grid(True, alpha=0.3, which='both')  # Show both major and minor grid lines
 
     # Learning rate curve
     axes[1].plot(epochs, learning_rate, color='orange', linewidth=2, marker='d', markersize=3)

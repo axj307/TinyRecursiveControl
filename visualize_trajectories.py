@@ -197,7 +197,7 @@ def visualize_multiple_trajectories(
 
         # Position vs Time
         ax_pos.plot(trc_times, trc_states[:, 0], '-', color=color, linewidth=2,
-                   alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
+                   alpha=alpha_solid)
         ax_pos.plot(optimal_times, optimal_states[:, 0], '--', color=color, linewidth=1.5,
                    alpha=alpha_light)
         ax_pos.scatter([0], [initial[0, 0].item()], color=color, s=80,
@@ -208,7 +208,7 @@ def visualize_multiple_trajectories(
 
         # Velocity vs Time
         ax_vel.plot(trc_times, trc_states[:, 1], '-', color=color, linewidth=2,
-                   alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
+                   alpha=alpha_solid)
         ax_vel.plot(optimal_times, optimal_states[:, 1], '--', color=color, linewidth=1.5,
                    alpha=alpha_light)
         ax_vel.scatter([0], [initial[0, 1].item()], color=color, s=80,
@@ -220,14 +220,13 @@ def visualize_multiple_trajectories(
         # Control Inputs vs Time
         control_times = trc_times[:-1]
         ax_ctrl.plot(control_times, trc_controls[:, 0].cpu().numpy(), '-',
-                    color=color, linewidth=2, alpha=alpha_solid,
-                    label=f'TRC {i+1}' if i < 3 else None)
+                    color=color, linewidth=2, alpha=alpha_solid)
         ax_ctrl.plot(control_times, optimal_controls_sample[:, 0].cpu().numpy(), '--',
                     color=color, linewidth=1.5, alpha=alpha_light)
 
         # Phase Space
         ax_phase.plot(trc_states[:, 0], trc_states[:, 1], '-', color=color,
-                     linewidth=2, alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
+                     linewidth=2, alpha=alpha_solid)
         ax_phase.plot(optimal_states[:, 0], optimal_states[:, 1], '--', color=color,
                      linewidth=1.5, alpha=alpha_light)
         ax_phase.scatter([initial[0, 0].item()], [initial[0, 1].item()],
@@ -241,29 +240,21 @@ def visualize_multiple_trajectories(
     # Format Position plot
     ax_pos.set_ylabel('Position', fontsize=12, fontweight='bold')
     ax_pos.set_xlabel('Time (s)', fontsize=11)
-    ax_pos.set_title('Position vs Time\n(Solid=TRC, Dashed=Optimal, Dotted=Targets)', fontsize=12, fontweight='bold')
-    ax_pos.legend(fontsize=9, loc='best', ncol=2)
     ax_pos.grid(True, alpha=0.3)
 
     # Format Velocity plot
     ax_vel.set_ylabel('Velocity', fontsize=12, fontweight='bold')
     ax_vel.set_xlabel('Time (s)', fontsize=11)
-    ax_vel.set_title('Velocity vs Time\n(Solid=TRC, Dashed=Optimal, Dotted=Targets)', fontsize=12, fontweight='bold')
-    ax_vel.legend(fontsize=9, loc='best', ncol=2)
     ax_vel.grid(True, alpha=0.3)
 
     # Format Control plot
     ax_ctrl.set_ylabel('Acceleration', fontsize=12, fontweight='bold')
     ax_ctrl.set_xlabel('Time (s)', fontsize=11)
-    ax_ctrl.set_title('Control Input vs Time\n(Solid=TRC, Dashed=Optimal)', fontsize=12, fontweight='bold')
-    ax_ctrl.legend(fontsize=9, loc='best', ncol=2)
     ax_ctrl.grid(True, alpha=0.3)
 
     # Format Phase Space plot
     ax_phase.set_xlabel('Position', fontsize=12, fontweight='bold')
     ax_phase.set_ylabel('Velocity', fontsize=12, fontweight='bold')
-    ax_phase.set_title('Phase Space\n(Solid=TRC, Dashed=Optimal, Stars=Targets)', fontsize=12, fontweight='bold')
-    ax_phase.legend(fontsize=9, loc='best', ncol=2)
     ax_phase.grid(True, alpha=0.3)
 
     # Overall title with statistics
