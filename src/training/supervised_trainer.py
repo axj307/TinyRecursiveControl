@@ -91,6 +91,8 @@ def simulate_double_integrator_trajectory(initial_state, controls, dt=0.33):
     """
     Simulate double integrator trajectory from initial state and control sequence.
 
+    DEPRECATED: Use simulate_trajectory() with a problem instance for problem-agnostic simulation.
+
     Args:
         initial_state: Initial state [batch_size, 2] or [2]
         controls: Control sequence [batch_size, horizon, 1] or [horizon, 1]
@@ -136,7 +138,124 @@ def simulate_double_integrator_trajectory(initial_state, controls, dt=0.33):
     return states
 
 
-def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0.0, dt=0.33):
+def simulate_vanderpol_torch(initial_state, controls, mu=1.0, dt=0.05):
+    """
+    Simulate Van der Pol oscillator in PyTorch (differentiable, GPU-accelerated).
+
+    Dynamics:
+        dx/dt = v
+        dv/dt = mu*(1-x²)*v - x + u
+
+    Uses RK4 integration for accuracy. Fully differentiable for backpropagation.
+
+    Args:
+        initial_state: Initial state [batch_size, 2] or [2]
+        controls: Control sequence [batch_size, horizon, 1] or [horizon, 1]
+        mu: Van der Pol parameter (damping nonlinearity)
+        dt: Time step
+
+    Returns:
+        states: State trajectory [batch_size, horizon+1, 2] or [horizon+1, 2]
+    """
+    # Handle both batched and single trajectories
+    if len(initial_state.shape) == 1:
+        initial_state = initial_state.unsqueeze(0)
+        controls = controls.unsqueeze(0)
+        squeeze_output = True
+    else:
+        squeeze_output = False
+
+    batch_size = initial_state.shape[0]
+    horizon = controls.shape[1]
+    device = controls.device
+    dtype = controls.dtype
+
+    # Initialize states tensor
+    states = torch.zeros(batch_size, horizon + 1, 2, device=device, dtype=dtype)
+    states[:, 0] = initial_state
+
+    # RK4 integration (fully differentiable)
+    def f(x_val, v_val, u_val):
+        """Van der Pol dynamics"""
+        dx = v_val
+        dv = mu * (1.0 - x_val**2) * v_val - x_val + u_val
+        return dx, dv
+
+    for t in range(horizon):
+        x = states[:, t, 0]
+        v = states[:, t, 1]
+        u = controls[:, t, 0]
+
+        # RK4 steps
+        k1_x, k1_v = f(x, v, u)
+        k2_x, k2_v = f(x + 0.5*dt*k1_x, v + 0.5*dt*k1_v, u)
+        k3_x, k3_v = f(x + 0.5*dt*k2_x, v + 0.5*dt*k2_v, u)
+        k4_x, k4_v = f(x + dt*k3_x, v + dt*k3_v, u)
+
+        # Update state
+        states[:, t+1, 0] = x + (dt/6.0) * (k1_x + 2*k2_x + 2*k3_x + k4_x)
+        states[:, t+1, 1] = v + (dt/6.0) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
+
+    if squeeze_output:
+        states = states.squeeze(0)
+
+    return states
+
+
+def simulate_trajectory(problem, initial_state, controls):
+    """
+    Simulate trajectory using problem-specific dynamics.
+
+    WARNING: Not differentiable! Uses NumPy simulation with detach().
+    For trajectory loss to work, use differentiable simulators like simulate_vanderpol_torch().
+
+    Supports any control problem with a simulate_step() method.
+
+    Args:
+        problem: Problem instance with simulate_step(state, control) method
+        initial_state: Initial state [batch_size, state_dim] or [state_dim]
+        controls: Control sequence [batch_size, horizon, control_dim] or [horizon, control_dim]
+
+    Returns:
+        states: State trajectory [batch_size, horizon+1, state_dim] or [horizon+1, state_dim]
+    """
+    # Handle both batched and single trajectories
+    if len(initial_state.shape) == 1:
+        # Single trajectory
+        initial_state = initial_state.unsqueeze(0)
+        controls = controls.unsqueeze(0)
+        squeeze_output = True
+    else:
+        squeeze_output = False
+
+    batch_size = initial_state.shape[0]
+    horizon = controls.shape[1]
+    state_dim = initial_state.shape[1]
+
+    # Initialize states tensor
+    device = initial_state.device
+    dtype = initial_state.dtype
+    states = torch.zeros(batch_size, horizon + 1, state_dim, device=device, dtype=dtype)
+    states[:, 0] = initial_state
+
+    # Simulate forward using problem-specific dynamics
+    for b in range(batch_size):
+        current_state = initial_state[b].detach().cpu().numpy()
+
+        for t in range(horizon):
+            control = controls[b, t].detach().cpu().numpy()
+            # Use problem's simulate_step method
+            next_state = problem.simulate_step(current_state, control)
+            states[b, t + 1] = torch.from_numpy(next_state).to(device=device, dtype=dtype)
+            current_state = next_state
+
+    if squeeze_output:
+        states = states.squeeze(0)
+
+    return states
+
+
+def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0.0, dt=0.33, problem=None):
     """
     Train for one epoch.
 
@@ -146,7 +265,8 @@ def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0
         optimizer: Optimizer
         device: Device to train on
         trajectory_loss_weight: Weight for trajectory loss (0 = control-only, >0 = add trajectory loss)
-        dt: Time step for trajectory simulation
+        dt: Time step for trajectory simulation (deprecated, use problem.dt instead)
+        problem: Problem instance for trajectory simulation (required if trajectory_loss_weight > 0)
 
     Returns:
         Average loss for the epoch
@@ -183,8 +303,15 @@ def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0
 
         # Trajectory loss (if enabled and states_gt available)
         if trajectory_loss_weight > 0.0 and states_gt is not None:
-            # Simulate trajectory from predicted controls
-            states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+            if problem is not None and problem.__class__.__name__ == 'VanderpolOscillator':
+                # Use differentiable PyTorch simulation for Van der Pol (GPU-accelerated, gradients flow!)
+                states_pred = simulate_vanderpol_torch(initial, controls_pred, mu=problem.mu, dt=problem.dt)
+            elif problem is None:
+                # Fallback to double integrator (deprecated)
+                states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+            else:
+                # Other problems: use non-differentiable simulation (won't help learning but won't break)
+                states_pred = simulate_trajectory(problem, initial, controls_pred)
 
             # Trajectory MSE
             trajectory_loss = F.mse_loss(states_pred, states_gt)
@@ -223,7 +350,7 @@ def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0
     return avg_loss
 
 
-def validate(model, val_loader, device, trajectory_loss_weight=0.0, dt=0.33):
+def validate(model, val_loader, device, trajectory_loss_weight=0.0, dt=0.33, problem=None):
     """
     Validate model.
 
@@ -232,7 +359,8 @@ def validate(model, val_loader, device, trajectory_loss_weight=0.0, dt=0.33):
         val_loader: Validation data loader
         device: Device
         trajectory_loss_weight: Weight for trajectory loss
-        dt: Time step for trajectory simulation
+        dt: Time step for trajectory simulation (deprecated, use problem.dt instead)
+        problem: Problem instance for trajectory simulation (required if trajectory_loss_weight > 0)
 
     Returns:
         Average validation loss
@@ -267,7 +395,15 @@ def validate(model, val_loader, device, trajectory_loss_weight=0.0, dt=0.33):
 
             # Trajectory loss (if enabled)
             if trajectory_loss_weight > 0.0 and states_gt is not None:
-                states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+                if problem is not None and problem.__class__.__name__ == 'VanderpolOscillator':
+                    # Use differentiable PyTorch simulation for Van der Pol (GPU-accelerated, gradients flow!)
+                    states_pred = simulate_vanderpol_torch(initial, controls_pred, mu=problem.mu, dt=problem.dt)
+                elif problem is None:
+                    # Fallback to double integrator (deprecated)
+                    states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+                else:
+                    # Other problems: use non-differentiable simulation (won't help learning but won't break)
+                    states_pred = simulate_trajectory(problem, initial, controls_pred)
                 trajectory_loss = F.mse_loss(states_pred, states_gt)
                 loss = control_loss + trajectory_loss_weight * trajectory_loss
                 total_trajectory_loss += trajectory_loss.item()
@@ -294,6 +430,7 @@ def train(
     scheduler_type: str = 'cosine',
     trajectory_loss_weight: float = 0.0,
     dt: float = 0.33,
+    problem = None,
 ):
     """
     Main training loop.
@@ -308,6 +445,9 @@ def train(
         output_dir: Output directory for checkpoints
         patience: Early stopping patience
         scheduler_type: LR scheduler type
+        trajectory_loss_weight: Weight for trajectory loss (0 = control-only, >0 = add trajectory loss)
+        dt: Time step (deprecated, use problem.dt)
+        problem: Problem instance for trajectory simulation (required if trajectory_loss_weight > 0)
     """
     logger.info("=" * 70)
     logger.info("Starting Training")
@@ -342,10 +482,10 @@ def train(
         logger.info(f"\nEpoch {epoch+1}/{epochs}")
 
         # Train
-        train_loss = train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight, dt)
+        train_loss = train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight, dt, problem)
 
         # Validate
-        val_loss = validate(model, val_loader, device, trajectory_loss_weight, dt)
+        val_loss = validate(model, val_loader, device, trajectory_loss_weight, dt, problem)
 
         # Get current learning rate
         current_lr = optimizer.param_groups[0]['lr']
