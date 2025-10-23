@@ -1,0 +1,132 @@
+# Double Integrator Control Problem Configuration
+#
+# This is a simple linear control problem where a point mass is controlled
+# via acceleration to reach target positions and velocities.
+#
+# State: [position, velocity]
+# Control: [acceleration]
+# Dynamics: x'' = u (double integration)
+
+# =============================================================================
+# Problem Identification
+# =============================================================================
+problem:
+  name: "double_integrator"
+  type: "linear"
+  description: "Point mass with double integrator dynamics"
+
+# =============================================================================
+# Dynamics Parameters
+# =============================================================================
+dynamics:
+  # Time discretization
+  dt: 0.33          # Time step (seconds)
+  horizon: 15       # Control horizon (number of steps)
+  total_time: 5.0   # Total time horizon (dt * horizon ≈ 5.0s)
+
+  # No additional physical parameters needed for double integrator
+  # (implicitly: unit mass, direct acceleration control)
+
+# =============================================================================
+# State and Control Bounds
+# =============================================================================
+bounds:
+  # State space bounds: [position, velocity]
+  state:
+    lower: [-10.0, -10.0]  # [m, m/s]
+    upper: [10.0, 10.0]    # [m, m/s]
+
+  # Control input bounds: [acceleration]
+  control:
+    lower: [-8.0]   # [m/s^2] - increased from 4.0 to reduce saturation
+    upper: [8.0]    # [m/s^2]
+
+  # Initial state sampling bounds (typically smaller than full state space)
+  # UPDATED: Reduced to ±2.0 to match main worktree (was ±5.0)
+  # Smaller range → less discretization error → better TRC learning
+  initial_state:
+    lower: [-2.0, -2.0]  # [m, m/s]
+    upper: [2.0, 2.0]    # [m, m/s]
+
+# =============================================================================
+# LQR Cost Parameters
+# =============================================================================
+lqr:
+  # State cost matrix Q (penalizes state deviation from target)
+  # Q = diag([q_position, q_velocity])
+  Q_matrix: [[10.0, 0.0], [0.0, 5.0]]
+
+  # Control cost R (penalizes control effort)
+  R_value: 0.1
+
+  # Terminal cost multiplier (Q_terminal = Q_terminal_multiplier * Q)
+  # Higher values encourage reaching the target more precisely
+  Q_terminal_multiplier: 20.0
+
+# =============================================================================
+# Data Generation Settings
+# =============================================================================
+data:
+  # Dataset sizes
+  num_train_samples: 10000
+  num_test_samples: 1000
+
+  # Controller type for optimal trajectory generation
+  # Options:
+  #   - "lqr": Standard LQR controller (good general purpose)
+  #   - "minimum_energy": Minimum-energy controller (better for near-zero error, exact tracking)
+  controller: "minimum_energy"
+
+  # Random seeds
+  train_seed: 42
+  test_seed: 123
+
+  # Sampling strategy
+  sampling:
+    method: "uniform"  # "uniform" or "gaussian"
+    # For gaussian: mean and std for each state dimension
+    # gaussian_mean: [0.0, 0.0]
+    # gaussian_std: [2.0, 2.0]
+
+# =============================================================================
+# Training-Specific Settings (problem-dependent)
+# =============================================================================
+training:
+  # Normalization (optional - can help training)
+  normalize_states: false
+  normalize_controls: false
+
+  # Augmentation (optional - can improve generalization)
+  augmentation:
+    enabled: false
+    flip_sign: false  # Randomly flip sign of states/controls (symmetric)
+    add_noise: false  # Add small Gaussian noise
+    noise_std: 0.01
+
+# =============================================================================
+# Evaluation Settings
+# =============================================================================
+evaluation:
+  # Success threshold (for computing success rate)
+  success_threshold: 0.1  # Total state error below this is "success"
+
+  # Metrics to compute
+  metrics:
+    - "position_error"
+    - "velocity_error"
+    - "control_cost"
+    - "success_rate"
+    - "trajectory_smoothness"
+
+# =============================================================================
+# Notes
+# =============================================================================
+notes: |
+  Default configuration for double integrator problem.
+
+  This configuration produces datasets suitable for training
+  TinyRecursiveControl models. The control bounds have been increased
+  to 8.0 to reduce control saturation during trajectory generation.
+
+  The minimum-energy controller typically produces smoother trajectories
+  with lower terminal error compared to standard LQR.
