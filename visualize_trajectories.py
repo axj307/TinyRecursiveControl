@@ -9,13 +9,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import sys
+import json
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.models import TinyRecursiveControl
+from src.models import TinyRecursiveControl, TRCConfig
 
 
 def double_integrator_simulate(initial_state, controls, dt=0.33):
@@ -54,7 +55,22 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
     print(f"Loading model from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    model = TinyRecursiveControl.create_medium()
+    # Load config from checkpoint's directory
+    checkpoint_dir = Path(checkpoint_path).parent
+    config_path = checkpoint_dir / 'config.json'
+
+    if config_path.exists():
+        print(f"Loading model config from {config_path}")
+        with open(config_path, 'r') as f:
+            config_dict = json.load(f)
+        config = TRCConfig(**config_dict)
+        model = TinyRecursiveControl(config)
+        print(f"✓ Model created from config (two_level={config.use_two_level})")
+    else:
+        # Fallback for old checkpoints
+        print("WARNING: No config.json found, using default medium model")
+        model = TinyRecursiveControl.create_medium()
+
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     model.eval()
@@ -77,14 +93,14 @@ def plot_single_trajectory(
     ax_pos, ax_vel, ax_ctrl, ax_phase,
     initial_state, target_state,
     trc_states, trc_times, trc_controls,
-    lqr_states, lqr_times, lqr_controls,
+    optimal_states, optimal_times, optimal_controls,
     title_prefix: str = "",
 ):
     """Plot a single trajectory comparison."""
 
     # Position vs Time
     ax_pos.plot(trc_times, trc_states[:, 0], 'b-', linewidth=2, label='TRC', alpha=0.8)
-    ax_pos.plot(lqr_times, lqr_states[:, 0], 'g--', linewidth=2, label='LQR', alpha=0.7)
+    ax_pos.plot(optimal_times, optimal_states[:, 0], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_pos.axhline(y=target_state[0].item(), color='r', linestyle=':', linewidth=1.5, label='Target')
     ax_pos.scatter([0], [initial_state[0].item()], color='orange', s=100, zorder=5, marker='o', label='Start')
     ax_pos.set_ylabel('Position', fontsize=10)
@@ -94,7 +110,7 @@ def plot_single_trajectory(
 
     # Velocity vs Time
     ax_vel.plot(trc_times, trc_states[:, 1], 'b-', linewidth=2, label='TRC', alpha=0.8)
-    ax_vel.plot(lqr_times, lqr_states[:, 1], 'g--', linewidth=2, label='LQR', alpha=0.7)
+    ax_vel.plot(optimal_times, optimal_states[:, 1], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_vel.axhline(y=target_state[1].item(), color='r', linestyle=':', linewidth=1.5, label='Target')
     ax_vel.scatter([0], [initial_state[1].item()], color='orange', s=100, zorder=5, marker='o', label='Start')
     ax_vel.set_ylabel('Velocity', fontsize=10)
@@ -105,7 +121,7 @@ def plot_single_trajectory(
     # Control Inputs vs Time
     control_times = trc_times[:-1]  # Controls are one step shorter
     ax_ctrl.plot(control_times, trc_controls[:, 0].cpu().numpy(), 'b-', linewidth=2, label='TRC', alpha=0.8)
-    ax_ctrl.plot(control_times, lqr_controls[:, 0].cpu().numpy(), 'g--', linewidth=2, label='LQR', alpha=0.7)
+    ax_ctrl.plot(control_times, optimal_controls[:, 0].cpu().numpy(), 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_ctrl.set_xlabel('Time (s)', fontsize=10)
     ax_ctrl.set_ylabel('Acceleration', fontsize=10)
     ax_ctrl.legend(fontsize=8, loc='best')
@@ -114,7 +130,7 @@ def plot_single_trajectory(
 
     # Phase Space (Position vs Velocity)
     ax_phase.plot(trc_states[:, 0], trc_states[:, 1], 'b-', linewidth=2, label='TRC', alpha=0.8)
-    ax_phase.plot(lqr_states[:, 0], lqr_states[:, 1], 'g--', linewidth=2, label='LQR', alpha=0.7)
+    ax_phase.plot(optimal_states[:, 0], optimal_states[:, 1], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_phase.scatter([initial_state[0].item()], [initial_state[1].item()],
                      color='orange', s=150, zorder=5, marker='o', label='Start', edgecolors='black', linewidths=2)
     ax_phase.scatter([target_state[0].item()], [target_state[1].item()],
@@ -158,7 +174,7 @@ def visualize_multiple_trajectories(
     for i, idx in enumerate(indices):
         initial = initial_states[idx:idx+1].to(device)
         target = target_states[idx:idx+1].to(device)
-        lqr_controls = optimal_controls[idx]
+        optimal_controls_sample = optimal_controls[idx]
 
         # Get TRC prediction
         with torch.no_grad():
@@ -167,13 +183,13 @@ def visualize_multiple_trajectories(
 
         # Simulate trajectories
         trc_states, trc_times = double_integrator_simulate(initial[0], trc_controls)
-        lqr_states, lqr_times = double_integrator_simulate(initial[0], lqr_controls)
+        optimal_states, optimal_times = double_integrator_simulate(initial[0], optimal_controls_sample)
 
         # Calculate errors
         trc_final_error = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
-        lqr_final_error = np.linalg.norm(lqr_states[-1] - target[0].cpu().numpy())
+        optimal_final_error = np.linalg.norm(optimal_states[-1] - target[0].cpu().numpy())
         trc_errors.append(trc_final_error)
-        lqr_errors.append(lqr_final_error)
+        lqr_errors.append(optimal_final_error)
 
         color = colors[i]
         alpha_solid = 0.8
@@ -182,7 +198,7 @@ def visualize_multiple_trajectories(
         # Position vs Time
         ax_pos.plot(trc_times, trc_states[:, 0], '-', color=color, linewidth=2,
                    alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
-        ax_pos.plot(lqr_times, lqr_states[:, 0], '--', color=color, linewidth=1.5,
+        ax_pos.plot(optimal_times, optimal_states[:, 0], '--', color=color, linewidth=1.5,
                    alpha=alpha_light)
         ax_pos.scatter([0], [initial[0, 0].item()], color=color, s=80,
                       marker='o', edgecolors='black', linewidths=1, zorder=5)
@@ -193,7 +209,7 @@ def visualize_multiple_trajectories(
         # Velocity vs Time
         ax_vel.plot(trc_times, trc_states[:, 1], '-', color=color, linewidth=2,
                    alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
-        ax_vel.plot(lqr_times, lqr_states[:, 1], '--', color=color, linewidth=1.5,
+        ax_vel.plot(optimal_times, optimal_states[:, 1], '--', color=color, linewidth=1.5,
                    alpha=alpha_light)
         ax_vel.scatter([0], [initial[0, 1].item()], color=color, s=80,
                       marker='o', edgecolors='black', linewidths=1, zorder=5)
@@ -206,13 +222,13 @@ def visualize_multiple_trajectories(
         ax_ctrl.plot(control_times, trc_controls[:, 0].cpu().numpy(), '-',
                     color=color, linewidth=2, alpha=alpha_solid,
                     label=f'TRC {i+1}' if i < 3 else None)
-        ax_ctrl.plot(control_times, lqr_controls[:, 0].cpu().numpy(), '--',
+        ax_ctrl.plot(control_times, optimal_controls_sample[:, 0].cpu().numpy(), '--',
                     color=color, linewidth=1.5, alpha=alpha_light)
 
         # Phase Space
         ax_phase.plot(trc_states[:, 0], trc_states[:, 1], '-', color=color,
                      linewidth=2, alpha=alpha_solid, label=f'TRC {i+1}' if i < 3 else None)
-        ax_phase.plot(lqr_states[:, 0], lqr_states[:, 1], '--', color=color,
+        ax_phase.plot(optimal_states[:, 0], optimal_states[:, 1], '--', color=color,
                      linewidth=1.5, alpha=alpha_light)
         ax_phase.scatter([initial[0, 0].item()], [initial[0, 1].item()],
                         color=color, s=100, marker='o', edgecolors='black',
@@ -225,38 +241,38 @@ def visualize_multiple_trajectories(
     # Format Position plot
     ax_pos.set_ylabel('Position', fontsize=12, fontweight='bold')
     ax_pos.set_xlabel('Time (s)', fontsize=11)
-    ax_pos.set_title('Position vs Time\n(Solid=TRC, Dashed=LQR, Dotted=Targets)', fontsize=12, fontweight='bold')
+    ax_pos.set_title('Position vs Time\n(Solid=TRC, Dashed=Optimal, Dotted=Targets)', fontsize=12, fontweight='bold')
     ax_pos.legend(fontsize=9, loc='best', ncol=2)
     ax_pos.grid(True, alpha=0.3)
 
     # Format Velocity plot
     ax_vel.set_ylabel('Velocity', fontsize=12, fontweight='bold')
     ax_vel.set_xlabel('Time (s)', fontsize=11)
-    ax_vel.set_title('Velocity vs Time\n(Solid=TRC, Dashed=LQR, Dotted=Targets)', fontsize=12, fontweight='bold')
+    ax_vel.set_title('Velocity vs Time\n(Solid=TRC, Dashed=Optimal, Dotted=Targets)', fontsize=12, fontweight='bold')
     ax_vel.legend(fontsize=9, loc='best', ncol=2)
     ax_vel.grid(True, alpha=0.3)
 
     # Format Control plot
     ax_ctrl.set_ylabel('Acceleration', fontsize=12, fontweight='bold')
     ax_ctrl.set_xlabel('Time (s)', fontsize=11)
-    ax_ctrl.set_title('Control Input vs Time\n(Solid=TRC, Dashed=LQR)', fontsize=12, fontweight='bold')
+    ax_ctrl.set_title('Control Input vs Time\n(Solid=TRC, Dashed=Optimal)', fontsize=12, fontweight='bold')
     ax_ctrl.legend(fontsize=9, loc='best', ncol=2)
     ax_ctrl.grid(True, alpha=0.3)
 
     # Format Phase Space plot
     ax_phase.set_xlabel('Position', fontsize=12, fontweight='bold')
     ax_phase.set_ylabel('Velocity', fontsize=12, fontweight='bold')
-    ax_phase.set_title('Phase Space\n(Solid=TRC, Dashed=LQR, Stars=Targets)', fontsize=12, fontweight='bold')
+    ax_phase.set_title('Phase Space\n(Solid=TRC, Dashed=Optimal, Stars=Targets)', fontsize=12, fontweight='bold')
     ax_phase.legend(fontsize=9, loc='best', ncol=2)
     ax_phase.grid(True, alpha=0.3)
 
     # Overall title with statistics
     avg_trc_error = np.mean(trc_errors)
-    avg_lqr_error = np.mean(lqr_errors)
+    avg_optimal_error = np.mean(lqr_errors)  # lqr_errors contains optimal errors
     fig.suptitle(
         f'Double Integrator Control - {num_examples} Trajectories Overlaid\n'
-        f'Avg Final Error: TRC={avg_trc_error:.3f}, LQR={avg_lqr_error:.3f} | '
-        f'Gap: {((avg_trc_error - avg_lqr_error) / avg_lqr_error * 100):.2f}%',
+        f'Avg Final Error: TRC={avg_trc_error:.3f}, Optimal={avg_optimal_error:.3f} | '
+        f'Gap: {((avg_trc_error - avg_optimal_error) / avg_optimal_error * 100):.2f}%',
         fontsize=14, fontweight='bold'
     )
 
@@ -282,7 +298,7 @@ def visualize_detailed_example(
 
     initial = initial_states[example_idx:example_idx+1].to(device)
     target = target_states[example_idx:example_idx+1].to(device)
-    lqr_controls = optimal_controls[example_idx]
+    optimal_controls_sample = optimal_controls[example_idx]
 
     # Get TRC prediction
     with torch.no_grad():
@@ -291,7 +307,7 @@ def visualize_detailed_example(
 
     # Simulate trajectories
     trc_states, trc_times = double_integrator_simulate(initial[0], trc_controls)
-    lqr_states, lqr_times = double_integrator_simulate(initial[0], lqr_controls)
+    optimal_states, optimal_times = double_integrator_simulate(initial[0], optimal_controls_sample)
 
     # Create detailed figure
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -300,18 +316,18 @@ def visualize_detailed_example(
         axes[0, 0], axes[0, 1], axes[1, 0], axes[1, 1],
         initial[0], target[0],
         trc_states, trc_times, trc_controls,
-        lqr_states, lqr_times, lqr_controls,
+        optimal_states, optimal_times, optimal_controls_sample,
     )
 
     # Add overall title
     trc_final_error = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
-    lqr_final_error = np.linalg.norm(lqr_states[-1] - target[0].cpu().numpy())
+    optimal_final_error = np.linalg.norm(optimal_states[-1] - target[0].cpu().numpy())
 
     fig.suptitle(
         f'Double Integrator Control - Detailed Example\n'
         f'Initial: pos={initial[0, 0]:.2f}, vel={initial[0, 1]:.2f} | '
         f'Target: pos={target[0, 0]:.2f}, vel={target[0, 1]:.2f}\n'
-        f'Final Error - TRC: {trc_final_error:.4f}, LQR: {lqr_final_error:.4f}',
+        f'Final Error - TRC: {trc_final_error:.4f}, Optimal: {optimal_final_error:.4f}',
         fontsize=14, fontweight='bold'
     )
 
@@ -335,7 +351,7 @@ def plot_error_distribution(
     """Plot error distribution across all test cases."""
 
     trc_errors = []
-    lqr_errors = []
+    optimal_errors = []
 
     print("Computing errors for all test cases...")
 
@@ -344,7 +360,7 @@ def plot_error_distribution(
         for i in range(len(initial_states)):
             initial = initial_states[i:i+1].to(device)
             target = target_states[i:i+1].to(device)
-            lqr_controls = optimal_controls[i]
+            optimal_controls_sample = optimal_controls[i]
 
             # Get TRC prediction
             output = model(initial, target)
@@ -352,24 +368,24 @@ def plot_error_distribution(
 
             # Simulate trajectories
             trc_states, _ = double_integrator_simulate(initial[0], trc_controls)
-            lqr_states, _ = double_integrator_simulate(initial[0], lqr_controls)
+            optimal_states, _ = double_integrator_simulate(initial[0], optimal_controls_sample)
 
             # Calculate final errors
             trc_err = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
-            lqr_err = np.linalg.norm(lqr_states[-1] - target[0].cpu().numpy())
+            optimal_err = np.linalg.norm(optimal_states[-1] - target[0].cpu().numpy())
 
             trc_errors.append(trc_err)
-            lqr_errors.append(lqr_err)
+            optimal_errors.append(optimal_err)
 
     trc_errors = np.array(trc_errors)
-    lqr_errors = np.array(lqr_errors)
+    optimal_errors = np.array(optimal_errors)
 
     # Create figure
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
     # Histogram comparison
     axes[0].hist(trc_errors, bins=30, alpha=0.6, label='TRC', color='blue', edgecolor='black')
-    axes[0].hist(lqr_errors, bins=30, alpha=0.6, label='LQR', color='green', edgecolor='black')
+    axes[0].hist(optimal_errors, bins=30, alpha=0.6, label='Optimal', color='green', edgecolor='black')
     axes[0].set_xlabel('Final State Error', fontsize=11)
     axes[0].set_ylabel('Frequency', fontsize=11)
     axes[0].set_title('Error Distribution', fontsize=12, fontweight='bold')
@@ -377,18 +393,18 @@ def plot_error_distribution(
     axes[0].grid(True, alpha=0.3)
 
     # Scatter plot
-    axes[1].scatter(lqr_errors, trc_errors, alpha=0.5, s=30, edgecolors='black', linewidths=0.5)
-    max_err = max(trc_errors.max(), lqr_errors.max())
+    axes[1].scatter(optimal_errors, trc_errors, alpha=0.5, s=30, edgecolors='black', linewidths=0.5)
+    max_err = max(trc_errors.max(), optimal_errors.max())
     axes[1].plot([0, max_err], [0, max_err], 'r--', linewidth=2, label='Perfect match')
-    axes[1].set_xlabel('LQR Error', fontsize=11)
+    axes[1].set_xlabel('Optimal Error', fontsize=11)
     axes[1].set_ylabel('TRC Error', fontsize=11)
-    axes[1].set_title('TRC vs LQR Error Comparison', fontsize=12, fontweight='bold')
+    axes[1].set_title('TRC vs Optimal Error Comparison', fontsize=12, fontweight='bold')
     axes[1].legend(fontsize=10)
     axes[1].grid(True, alpha=0.3)
     axes[1].set_aspect('equal')
 
     # Box plot
-    axes[2].boxplot([trc_errors, lqr_errors], labels=['TRC', 'LQR'], widths=0.5)
+    axes[2].boxplot([trc_errors, optimal_errors], labels=['TRC', 'Optimal'], widths=0.5)
     axes[2].set_ylabel('Final State Error', fontsize=11)
     axes[2].set_title('Error Statistics', fontsize=12, fontweight='bold')
     axes[2].grid(True, alpha=0.3, axis='y')
@@ -396,8 +412,8 @@ def plot_error_distribution(
     # Add statistics text
     stats_text = (
         f'TRC: mean={trc_errors.mean():.4f}, std={trc_errors.std():.4f}\n'
-        f'LQR: mean={lqr_errors.mean():.4f}, std={lqr_errors.std():.4f}\n'
-        f'Gap: {((trc_errors.mean() - lqr_errors.mean()) / lqr_errors.mean() * 100):.2f}%'
+        f'Optimal: mean={optimal_errors.mean():.4f}, std={optimal_errors.std():.4f}\n'
+        f'Gap: {((trc_errors.mean() - optimal_errors.mean()) / optimal_errors.mean() * 100):.2f}%'
     )
     fig.text(0.5, 0.02, stats_text, ha='center', fontsize=11,
              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
@@ -410,8 +426,8 @@ def plot_error_distribution(
 
     print(f"\nError Statistics:")
     print(f"  TRC - Mean: {trc_errors.mean():.4f}, Std: {trc_errors.std():.4f}")
-    print(f"  LQR - Mean: {lqr_errors.mean():.4f}, Std: {lqr_errors.std():.4f}")
-    print(f"  Gap from Optimal: {((trc_errors.mean() - lqr_errors.mean()) / lqr_errors.mean() * 100):.2f}%")
+    print(f"  Optimal - Mean: {optimal_errors.mean():.4f}, Std: {optimal_errors.std():.4f}")
+    print(f"  Gap from Optimal: {((trc_errors.mean() - optimal_errors.mean()) / optimal_errors.mean() * 100):.2f}%")
 
     return fig
 
