@@ -187,6 +187,14 @@ def main():
     else:
         controller_type = problem_cfg.get("data", {}).get("controller", "lqr")
 
+    # Get target state (for regulation tasks)
+    data_cfg = problem_cfg.get("data", {})
+    target_state_list = data_cfg.get("target_state", None)
+    if target_state_list is not None:
+        target_state = np.array(target_state_list)
+    else:
+        target_state = None
+
     # Build problem kwargs from config
     problem_kwargs = {
         "dt": dt,
@@ -257,6 +265,7 @@ def main():
             num_samples=num_samples,
             controller_type=controller_type,
             random_seed=seed,
+            target_state=target_state,
         )
     except Exception as e:
         print(f"\nError during dataset generation: {e}")
