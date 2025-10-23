@@ -3,20 +3,183 @@ LQR Dataset Generator
 
 Generates optimal control trajectories using Linear Quadratic Regulator (LQR)
 for supervised pretraining of the Tiny Recursive Control model.
+
+**REFACTORED**: Now works with any BaseControlProblem through the environment
+abstraction layer.
 """
+
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import numpy as np
 import argparse
 import os
 import pickle
-from typing import Dict, List, Tuple
-from pathlib import Path
+from typing import Dict, List, Tuple, Optional
 try:
     import control
     HAS_CONTROL = True
 except ImportError:
     HAS_CONTROL = False
     print("Warning: 'control' package not installed. Install with: pip install control")
+
+from src.environments import BaseControlProblem
+
+
+class FiniteHorizonLQR:
+    """
+    Finite-horizon LQR solver for any linear control problem.
+
+    This works with any BaseControlProblem that implements get_system_matrices()
+    and get_lqr_params().
+    """
+
+    def __init__(self, problem: BaseControlProblem):
+        """
+        Initialize LQR solver for a given problem.
+
+        Args:
+            problem: BaseControlProblem instance (must be linear)
+
+        Raises:
+            NotImplementedError: If problem doesn't provide system matrices
+        """
+        self.problem = problem
+
+        # Get system matrices (A, B)
+        try:
+            self.A, self.B = problem.get_system_matrices()
+        except NotImplementedError:
+            raise NotImplementedError(
+                f"Problem '{problem.name}' does not provide system matrices. "
+                "LQR requires a linear system."
+            )
+
+        # Get LQR cost parameters
+        self.lqr_params = problem.get_lqr_params()
+        self.Q = np.array(self.lqr_params["Q"])
+        self.R = np.array(self.lqr_params["R"])
+        if self.R.ndim == 0:
+            self.R = np.array([[self.R]])  # Convert scalar to matrix
+
+        # Get control bounds
+        self.control_lower, self.control_upper = problem.get_control_bounds()
+
+    def solve_finite_horizon(
+        self,
+        num_steps: int,
+        Q_terminal: Optional[np.ndarray] = None
+    ) -> List[np.ndarray]:
+        """
+        Solve finite-horizon LQR problem.
+
+        Computes time-varying feedback gains by solving the discrete-time
+        Riccati equation backwards in time.
+
+        Args:
+            num_steps: Number of control steps
+            Q_terminal: Terminal cost matrix (uses Q * terminal_multiplier if None)
+
+        Returns:
+            List of feedback gain matrices K[t] for t=0,...,num_steps-1
+        """
+        if Q_terminal is None:
+            terminal_mult = self.lqr_params.get("Q_terminal_multiplier", 100.0)
+            Q_terminal = self.Q * terminal_mult
+
+        # Initialize with terminal cost
+        P = Q_terminal.copy()
+        K_gains = []
+
+        # Solve Riccati equation backwards
+        for t in range(num_steps - 1, -1, -1):
+            # Compute feedback gain: K[t] = (R + B'*P*B)^{-1} * B'*P*A
+            BtPB = self.B.T @ P @ self.B + self.R
+            BtPA = self.B.T @ P @ self.A
+            K_t = np.linalg.solve(BtPB, BtPA)
+
+            K_gains.append(K_t.copy())
+
+            # Update P: P = Q + A'*P*A - A'*P*B*K_t
+            AtPA = self.A.T @ P @ self.A
+            AtPB = self.A.T @ P @ self.B
+            P = self.Q + AtPA - AtPB @ K_t
+
+        # Reverse to get forward-time gains
+        K_gains.reverse()
+
+        return K_gains
+
+    def generate_trajectory(
+        self,
+        initial_state: np.ndarray,
+        target_state: np.ndarray,
+        num_steps: Optional[int] = None
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Generate optimal LQR trajectory.
+
+        Args:
+            initial_state: Initial state
+            target_state: Target state
+            num_steps: Number of steps (uses problem.horizon if None)
+
+        Returns:
+            states: State trajectory [num_steps+1, state_dim]
+            controls: Control sequence [num_steps, control_dim]
+            cost: Total LQR cost
+        """
+        if num_steps is None:
+            num_steps = self.problem.horizon
+
+        # Solve for time-varying gains
+        K_gains = self.solve_finite_horizon(num_steps)
+
+        # Generate trajectory
+        states = [initial_state.copy()]
+        controls = []
+        total_cost = 0.0
+
+        current_state = initial_state.copy()
+
+        for t in range(num_steps):
+            # Compute control: u = -K[t] * (x - x_target)
+            state_error = current_state - target_state
+            u = -K_gains[t] @ state_error
+
+            # Clip to bounds
+            u = np.clip(u.flatten(), self.control_lower, self.control_upper)
+
+            controls.append(u.copy())
+
+            # Compute stage cost
+            stage_cost = state_error.T @ self.Q @ state_error
+            # Handle control cost
+            if self.R.size == 1:
+                # Scalar R
+                stage_cost += float(self.R) * np.sum(u ** 2)
+            else:
+                # Matrix R
+                stage_cost += u.T @ self.R @ u
+            total_cost += float(stage_cost)
+
+            # Propagate dynamics using problem's simulate_step
+            next_state = self.problem.simulate_step(current_state, u)
+            states.append(next_state.copy())
+
+            current_state = next_state
+
+        # Add terminal cost
+        final_error = current_state - target_state
+        terminal_mult = self.lqr_params.get("Q_terminal_multiplier", 100.0)
+        Q_terminal = self.Q * terminal_mult
+        terminal_cost = final_error.T @ Q_terminal @ final_error
+        total_cost += terminal_cost
+
+        return np.array(states), np.array(controls), float(total_cost)
 
 
 class DoubleIntegratorLQR:
@@ -201,6 +364,125 @@ class DoubleIntegratorLQR:
         controls = np.array(controls)
 
         return states, controls, total_cost
+
+
+def generate_dataset_generic(
+    problem: BaseControlProblem,
+    num_samples: int,
+    controller_type: str = "lqr",
+    random_seed: int = 42,
+    target_state: Optional[np.ndarray] = None,
+) -> Dict:
+    """
+    Generate dataset of optimal control trajectories for any control problem.
+
+    **NEW**: This is the refactored, problem-agnostic version.
+
+    Args:
+        problem: BaseControlProblem instance
+        num_samples: Number of trajectories to generate
+        controller_type: Controller type ("lqr" or "minimum_energy")
+        random_seed: Random seed for reproducibility
+        target_state: Fixed target state (None = origin for all samples)
+
+    Returns:
+        Dictionary with:
+            - initial_states: [num_samples, state_dim]
+            - target_states: [num_samples, state_dim]
+            - state_trajectories: [num_samples, horizon+1, state_dim]
+            - control_sequences: [num_samples, horizon, control_dim]
+            - costs: [num_samples]
+    """
+    rng = np.random.default_rng(random_seed)
+
+    # Initialize dataset
+    dataset = {
+        'initial_states': [],
+        'target_states': [],
+        'state_trajectories': [],
+        'control_sequences': [],
+        'costs': [],
+    }
+
+    print(f"Generating {num_samples} optimal trajectories for {problem.name}...")
+    print(f"  Controller: {controller_type}")
+    print(f"  Horizon: {problem.horizon} steps × {problem.dt}s = {problem.horizon * problem.dt}s")
+
+    # Create controller
+    if controller_type == "lqr":
+        try:
+            controller = FiniteHorizonLQR(problem)
+        except NotImplementedError as e:
+            raise ValueError(
+                f"LQR controller requires linear system. Problem '{problem.name}' "
+                f"does not provide system matrices. Error: {e}"
+            )
+    elif controller_type == "minimum_energy":
+        # Try to import minimum energy controller
+        try:
+            from .minimum_energy_controller import create_minimum_energy_controller
+            controller = create_minimum_energy_controller(problem)
+        except ImportError:
+            raise ValueError(
+                "Minimum energy controller not available. "
+                "Use controller_type='lqr' instead."
+            )
+    else:
+        raise ValueError(
+            f"Unknown controller type: {controller_type}. "
+            "Use 'lqr' or 'minimum_energy'."
+        )
+
+    # Determine target sampling strategy
+    if target_state is None:
+        # Default: sample random targets (not origin!)
+        # This creates diverse trajectories reaching different goals
+        randomize_targets = True
+    else:
+        # Fixed target specified (e.g., all go to origin)
+        randomize_targets = False
+
+    # Generate trajectories
+    for i in range(num_samples):
+        # Sample random initial state
+        initial_state = problem.sample_initial_state(rng)
+
+        # Sample target state
+        if randomize_targets:
+            # Random target from same distribution as initial states
+            target = problem.sample_initial_state(rng)
+        else:
+            # Use fixed target
+            target = target_state.copy()
+
+        # Generate optimal trajectory
+        states, controls, cost = controller.generate_trajectory(
+            initial_state=initial_state,
+            target_state=target,
+            num_steps=problem.horizon
+        )
+
+        dataset['initial_states'].append(initial_state)
+        dataset['target_states'].append(target)
+        dataset['state_trajectories'].append(states)
+        dataset['control_sequences'].append(controls)
+        dataset['costs'].append(cost)
+
+        if (i + 1) % 1000 == 0 or i == 0:
+            print(f"  Generated {i + 1}/{num_samples} trajectories")
+
+    # Convert to numpy arrays
+    for key in ['initial_states', 'target_states', 'state_trajectories', 'control_sequences', 'costs']:
+        dataset[key] = np.array(dataset[key])
+
+    print(f"✓ Dataset generation complete!")
+    print(f"  - Initial states: {dataset['initial_states'].shape}")
+    print(f"  - State trajectories: {dataset['state_trajectories'].shape}")
+    print(f"  - Control sequences: {dataset['control_sequences'].shape}")
+    print(f"  - Average cost: {np.mean(dataset['costs']):.4f}")
+    print(f"  - Cost std: {np.std(dataset['costs']):.4f}")
+
+    return dataset
 
 
 def generate_dataset(

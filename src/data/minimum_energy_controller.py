@@ -268,6 +268,37 @@ class DoubleIntegratorMinimumEnergy:
         )
 
 
+def create_minimum_energy_controller(problem):
+    """
+    Factory function to create minimum-energy controller for a problem.
+
+    Args:
+        problem: BaseControlProblem instance
+
+    Returns:
+        Controller instance with generate_trajectory() interface
+
+    Raises:
+        ValueError: If problem is not supported
+    """
+    # Get control bounds from problem
+    control_lower, control_upper = problem.get_control_bounds()
+    control_bounds = max(abs(control_lower[0]), abs(control_upper[0]))
+
+    # For now, only double integrator is supported
+    if problem.name == "double_integrator":
+        return DoubleIntegratorMinimumEnergy(
+            dt=problem.dt,
+            control_bounds=control_bounds
+        )
+    else:
+        raise ValueError(
+            f"Minimum-energy controller not implemented for '{problem.name}'. "
+            "Currently only supports 'double_integrator'. "
+            "Use controller_type='lqr' instead."
+        )
+
+
 def test_minimum_energy():
     """Test minimum-energy controller on simple cases."""
 
