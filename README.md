@@ -17,6 +17,48 @@ This project adapts the **Tiny Recursion Model** (TRM) architecture from [Less i
 - **Weight Sharing**: Same reasoning module used across refinement iterations
 - **Trajectory Feedback**: Incorporates simulation results to guide refinement
 
+## Multi-Problem Support
+
+**NEW**: TinyRecursiveControl now supports multiple control problems through a unified environment abstraction layer!
+
+### Supported Problems
+
+- **Double Integrator**: 2D linear dynamics (position, velocity)
+- **Pendulum**: Nonlinear dynamics with angle wrapping
+- **Your Problem**: Easy to add new problems - see [Adding New Problems Guide](docs/ADDING_NEW_PROBLEMS.md)
+
+### Quick Example
+
+```python
+from src.environments import get_problem
+
+# Create any registered problem
+problem = get_problem("double_integrator")
+# or
+problem = get_problem("pendulum")
+
+# Problem provides unified interface
+print(f"State dim: {problem.state_dim}")
+print(f"Control dim: {problem.control_dim}")
+
+# Simulate dynamics
+import numpy as np
+state = np.array([1.0, 0.5])
+control = np.array([0.1])
+next_state = problem.simulate_step(state, control)
+```
+
+### Why Multi-Problem?
+
+- **No Code Duplication**: Write dynamics once, use everywhere
+- **Unified Training**: Same training/evaluation scripts for all problems
+- **Easy Extension**: Add new problems in ~100 lines ([guide](docs/ADDING_NEW_PROBLEMS.md))
+- **Configurable**: YAML configs for problem-specific parameters
+
+See [Architecture](#architecture) below for details.
+
+---
+
 ## Architecture
 
 TRC offers **two architectural modes**:
@@ -245,23 +287,42 @@ print(f"Trajectory errors per iteration: {output['errors']}")
 TinyRecursiveControl/
 ├── TinyRecursiveModels/         # Original TRM repository (reference)
 ├── src/
+│   ├── environments/            # 🆕 Environment abstraction
+│   │   ├── base.py             # Base class for all problems
+│   │   ├── double_integrator.py # Double integrator implementation
+│   │   ├── pendulum.py         # Pendulum implementation
+│   │   ├── metadata.py         # Unified metadata schema
+│   │   └── __init__.py         # Problem registry
+│   ├── config/                 # 🆕 Configuration system
+│   │   ├── loader.py           # YAML config loader
+│   │   └── __init__.py
 │   ├── models/
 │   │   ├── encoders.py         # State/error encoders
 │   │   ├── decoders.py         # Control decoders
 │   │   ├── recursive_reasoning.py  # Recursive refinement logic
 │   │   └── tiny_recursive_control.py  # Main TRC model
 │   ├── data/
-│   │   ├── lqr_generator.py    # Generate optimal LQR datasets
+│   │   ├── lqr_generator.py    # Generic dataset generator
 │   │   └── trajectory_dataset.py  # PyTorch dataset classes
 │   ├── training/
 │   │   ├── supervised_trainer.py  # Supervised pretraining
 │   │   └── rl_finetuner.py     # RL fine-tuning
 │   └── evaluation/
-│       └── evaluator.py         # Evaluation metrics
-├── configs/
-│   ├── tiny_recursive_base.yaml
-│   ├── supervised_training.yaml
-│   └── rl_finetuning.yaml
+│       └── evaluator.py         # Problem-agnostic evaluator
+├── configs/                     # 🆕 YAML configurations
+│   ├── problems/               # Problem-specific configs
+│   │   ├── double_integrator.yaml
+│   │   └── pendulum.yaml
+│   └── training/               # Training configs
+│       └── default.yaml
+├── scripts/
+│   ├── generate_dataset.py     # 🆕 Generic dataset generation
+│   └── train_trc.py            # 🆕 Multi-problem training
+├── slurm/                      # 🆕 Problem-specific pipelines
+│   ├── double_integrator_pipeline.sbatch
+│   └── pendulum_pipeline.sbatch
+├── docs/
+│   └── ADDING_NEW_PROBLEMS.md  # 🆕 Guide for adding problems
 ├── experiments/
 │   └── results/
 ├── requirements.txt
@@ -270,35 +331,87 @@ TinyRecursiveControl/
 
 ## Training
 
-### 1. Generate LQR Dataset
+### Multi-Problem Workflow
+
+With the new environment abstraction, you can train on any registered problem:
+
+### 1. Generate Dataset
 
 ```bash
-python src/data/lqr_generator.py \
+# For double integrator
+python scripts/generate_dataset.py \
+    --problem double_integrator \
     --num_samples 10000 \
-    --output_dir data/double_integrator_lqr \
-    --state_dim 2 \
-    --control_dim 1 \
-    --time_horizon 5.0 \
-    --num_steps 15
+    --output_dir data/double_integrator \
+    --split train
+
+# For pendulum
+python scripts/generate_dataset.py \
+    --problem pendulum \
+    --num_samples 10000 \
+    --output_dir data/pendulum \
+    --split train
+
+# Parameters are loaded from configs/problems/{problem}.yaml
 ```
 
-### 2. Supervised Pretraining
+### 2. Train Model
 
 ```bash
-python src/training/supervised_trainer.py \
-    --config configs/supervised_training.yaml \
-    --data_dir data/double_integrator_lqr \
+# For double integrator
+python scripts/train_trc.py \
+    --problem double_integrator \
+    --data_path data/double_integrator/double_integrator_dataset_train.npz \
+    --model_size medium \
     --epochs 100 \
-    --batch_size 64
+    --output_dir outputs/double_integrator_training
+
+# For pendulum
+python scripts/train_trc.py \
+    --problem pendulum \
+    --data_path data/pendulum/pendulum_dataset_train.npz \
+    --model_size medium \
+    --epochs 150 \
+    --output_dir outputs/pendulum_training
 ```
 
-### 3. RL Fine-tuning (Optional)
+### 3. Evaluate Model
 
 ```bash
-python src/training/rl_finetuner.py \
-    --config configs/rl_finetuning.yaml \
-    --checkpoint outputs/supervised/best_model.pt
+# For double integrator
+python src/evaluation/evaluator.py \
+    --problem double_integrator \
+    --checkpoint outputs/double_integrator_training/best_model.pt \
+    --test_data data/double_integrator/double_integrator_dataset_test.npz \
+    --output outputs/double_integrator_eval.json
+
+# For pendulum
+python src/evaluation/evaluator.py \
+    --problem pendulum \
+    --checkpoint outputs/pendulum_training/best_model.pt \
+    --test_data data/pendulum/pendulum_dataset_test.npz \
+    --output outputs/pendulum_eval.json
 ```
+
+### 4. Complete Pipeline (SLURM)
+
+Run the complete end-to-end pipeline:
+
+```bash
+# Double integrator
+sbatch slurm/double_integrator_pipeline.sbatch
+
+# Pendulum
+sbatch slurm/pendulum_pipeline.sbatch
+```
+
+Each pipeline includes:
+1. Dataset generation (train + test)
+2. Model training
+3. Evaluation
+4. Baseline comparison (optional)
+5. Visualization (optional)
+6. Report generation
 
 ## Comparison: TRC vs LLM-based Control
 
@@ -362,6 +475,85 @@ python src/training/rl_finetuner.py \
 - H_cycles=3, L_cycles=6
 - Suitable for: Complex hierarchical reasoning
 
+## Adding New Control Problems
+
+Want to add a new control problem? It's easy! Follow these steps:
+
+### Quick Steps
+
+1. **Create environment class**: `src/environments/my_problem.py`
+   ```python
+   from .base import BaseControlProblem
+
+   class MyProblem(BaseControlProblem):
+       def __init__(self, dt, horizon, **kwargs):
+           super().__init__(dt, horizon, name="my_problem")
+           # Initialize parameters
+
+       @property
+       def state_dim(self): return 2
+
+       @property
+       def control_dim(self): return 1
+
+       def simulate_step(self, state, control):
+           # Implement dynamics
+           return next_state
+
+       # Implement other required methods...
+   ```
+
+2. **Register in `src/environments/__init__.py`**:
+   ```python
+   from .my_problem import MyProblem
+
+   PROBLEM_REGISTRY = {
+       # ...
+       "my_problem": MyProblem,
+   }
+   ```
+
+3. **Create config**: `configs/problems/my_problem.yaml`
+   ```yaml
+   problem:
+     name: "my_problem"
+     type: "linear"  # or "nonlinear"
+
+   dynamics:
+     dt: 0.1
+     horizon: 50
+     # Add problem-specific parameters
+
+   bounds:
+     state:
+       lower: [-10.0, -10.0]
+       upper: [10.0, 10.0]
+     # ...
+   ```
+
+4. **Create pipeline**: `slurm/my_problem_pipeline.sbatch`
+   - Copy from `double_integrator_pipeline.sbatch` or `pendulum_pipeline.sbatch`
+   - Change `PROBLEM="my_problem"`
+
+5. **Test**:
+   ```bash
+   # Generate dataset
+   python scripts/generate_dataset.py --problem my_problem --num_samples 100 --output_dir data/test
+
+   # Train
+   sbatch slurm/my_problem_pipeline.sbatch
+   ```
+
+### Complete Guide
+
+See **[docs/ADDING_NEW_PROBLEMS.md](docs/ADDING_NEW_PROBLEMS.md)** for:
+- Detailed walkthrough with examples
+- Common pitfalls and solutions
+- Advanced topics (multi-dimensional controls, hybrid systems, etc.)
+- Complete pendulum implementation example
+
+---
+
 ## Experiments
 
 ### Experiment 1: Parameter Efficiency
@@ -385,21 +577,54 @@ Test on out-of-distribution scenarios:
 - Different time horizons
 - Perturbed dynamics
 
+### Experiment 4: Multi-Problem Learning
+
+Compare performance across different control problems:
+- Linear vs nonlinear systems
+- Different state/control dimensions
+- Varying time horizons
+
 ## Next Steps
 
+### Completed ✅
+
 1. ✅ Project setup and architecture implementation
-2. ⬜ Implement LQR dataset generator
-3. ⬜ Create supervised training script
-4. ⬜ Integrate with existing dynamics from your LLM project
-5. ⬜ Run baseline experiments
-6. ⬜ Compare with LLM approach
-7. ⬜ Publish results
+2. ✅ Multi-problem environment abstraction layer
+3. ✅ Configuration system (YAML-based)
+4. ✅ Generic dataset generation pipeline
+5. ✅ Multi-problem training scripts
+6. ✅ Problem-agnostic evaluation
+7. ✅ Complete SLURM pipelines for multiple problems
+8. ✅ Documentation for adding new problems
+
+### In Progress 🚧
+
+1. Run baseline experiments on multiple problems
+2. Compare TRC performance across problem types
+3. Analyze recursive refinement effectiveness
+4. Compare with LLM-based control approaches
+
+### Future Work 🔮
+
+1. Add more control problems (cartpole, quadrotor, etc.)
+2. Implement RL fine-tuning for improved performance
+3. Multi-task learning across problems
+4. Transfer learning experiments
+5. Publish results and findings
 
 ## Documentation
 
+### Architecture & Features
 - **[Two-Level Architecture Guide](docs/AI/TwoLevel_Architecture_Guide.md)**: Complete guide to using the TRM-style hierarchical mode
 - **[TRM vs TRC Comparison](docs/AI/TRM_vs_TRC_Comparison.md)**: Detailed comparison of TRM and TRC architectures
 - **[TRM Paper Architecture](docs/AI/TRM_Paper_Architecture.md)**: Summary of the original TRM paper
+
+### Multi-Problem Support
+- **[Adding New Problems Guide](docs/ADDING_NEW_PROBLEMS.md)**: Step-by-step guide for adding new control problems
+  - Detailed walkthrough with examples
+  - Pendulum implementation walkthrough
+  - Common pitfalls and solutions
+  - Testing and validation steps
 
 ## References
 
