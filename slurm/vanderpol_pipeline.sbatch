@@ -73,6 +73,12 @@ EPOCHS=100
 BATCH_SIZE=64
 LEARNING_RATE=1e-3
 
+# Trajectory Loss Weight (impacts training speed!)
+# 0.0 = control-only (FAST but poor accuracy for nonlinear systems)
+# 0.3 = light trajectory loss (RECOMMENDED: 30% slower, good accuracy improvement)
+# 1.0 = full trajectory loss (SLOW: 50-100× slower, best accuracy)
+TRAJECTORY_LOSS_WEIGHT=0.3
+
 # Output Configuration
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="outputs/${PROBLEM}_pipeline_${SLURM_JOB_ID}_${TIMESTAMP}"
@@ -184,6 +190,7 @@ echo "  Model type: two_level_medium"
 echo "  Epochs: $EPOCHS"
 echo "  Batch size: $BATCH_SIZE"
 echo "  Learning rate: $LEARNING_RATE"
+echo "  Trajectory loss weight: $TRAJECTORY_LOSS_WEIGHT"
 echo "  Output: $TRAIN_OUTPUT_DIR"
 echo ""
 
@@ -195,6 +202,7 @@ python scripts/train_trc.py \
     --epochs $EPOCHS \
     --batch_size $BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
+    --trajectory_loss_weight $TRAJECTORY_LOSS_WEIGHT \
     --output_dir "$TRAIN_OUTPUT_DIR" \
     --save_best_only
 
@@ -311,6 +319,7 @@ if [ -f "visualize_trajectories.py" ]; then
     echo ""
 
     python visualize_trajectories.py \
+        --problem "$PROBLEM" \
         --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
         --test_data "$TEST_DATA" \
         --output_dir "$VIZ_OUTPUT_DIR" \
@@ -389,6 +398,7 @@ cat > "$REPORT_FILE" << EOF
 - **Epochs**: $EPOCHS
 - **Batch Size**: $BATCH_SIZE
 - **Learning Rate**: $LEARNING_RATE
+- **Trajectory Loss Weight**: $TRAJECTORY_LOSS_WEIGHT (0.0=control-only, >0=trajectory loss)
 - **Optimizer**: AdamW
 - **Scheduler**: Cosine Annealing
 - **Early Stopping Patience**: 20 epochs

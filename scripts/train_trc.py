@@ -28,7 +28,7 @@ from src.models import TinyRecursiveControl, TRCConfig
 from src.training.supervised_trainer import train_epoch, validate
 from src.training.utils import ModelCheckpoint, EarlyStopping, TrainingStats, get_lr_scheduler
 from src.config import get_config
-from src.environments import list_problems
+from src.environments import list_problems, get_problem
 
 
 def load_dataset(data_path, eval_data_path=None, batch_size=64):
@@ -188,7 +188,7 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
 
 def train_model(model, train_loader, eval_loader, epochs, learning_rate, output_dir,
                 log_interval=10, eval_interval=10, save_checkpoints=True, save_best_only=False,
-                trajectory_loss_weight=0.0, dt=0.33):
+                trajectory_loss_weight=0.0, dt=0.33, problem=None):
     """Train the model."""
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -212,6 +212,10 @@ def train_model(model, train_loader, eval_loader, epochs, learning_rate, output_
     print(f"\nStarting training for {epochs} epochs...")
     if trajectory_loss_weight > 0.0:
         print(f"Using trajectory loss with weight {trajectory_loss_weight:.3f}")
+        if problem is not None:
+            print(f"  Using {problem.__class__.__name__} dynamics for trajectory simulation")
+        else:
+            print(f"  WARNING: No problem instance provided, falling back to double integrator dynamics")
     print("=" * 70)
 
     best_loss = float('inf')
@@ -220,11 +224,11 @@ def train_model(model, train_loader, eval_loader, epochs, learning_rate, output_
 
     for epoch in range(epochs):
         # Train
-        train_loss = train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight, dt)
+        train_loss = train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight, dt, problem)
         train_losses.append(train_loss)
 
         # Evaluate
-        eval_loss = validate(model, eval_loader, device, trajectory_loss_weight, dt)
+        eval_loss = validate(model, eval_loader, device, trajectory_loss_weight, dt, problem)
         eval_losses.append(eval_loss)
 
         # Update scheduler
@@ -479,6 +483,15 @@ def main():
         custom_config_json=args.custom_config_json
     )
 
+    # Load problem instance for trajectory simulation (if needed for trajectory loss)
+    problem_instance = None
+    if args.trajectory_loss_weight > 0.0 and args.problem:
+        print(f"\nLoading problem instance for trajectory simulation: {args.problem}")
+        problem_instance = get_problem(args.problem)
+        print(f"✓ Problem instance loaded: {problem_instance.__class__.__name__}")
+        print(f"  dt: {problem_instance.dt}")
+        print()
+
     # Train
     trained_model = train_model(
         model=model,
@@ -493,6 +506,7 @@ def main():
         save_best_only=args.save_best_only,
         trajectory_loss_weight=args.trajectory_loss_weight,
         dt=args.dt,
+        problem=problem_instance,
     )
 
     print("\n✓ Training complete!")

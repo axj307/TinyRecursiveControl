@@ -1,7 +1,8 @@
 """
-Visualize Double Integrator Trajectories
+Visualize Control Trajectories
 
-Compare TRC control vs LQR optimal control with detailed trajectory plots.
+Compare TRC control vs optimal control with detailed trajectory plots.
+Supports any control problem (double integrator, Van der Pol, pendulum, etc.)
 """
 
 import torch
@@ -17,35 +18,36 @@ from typing import Dict, List, Tuple
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.models import TinyRecursiveControl, TRCConfig
+from src.environments import get_problem
 
 
-def double_integrator_simulate(initial_state, controls, dt=0.33):
+def simulate_trajectory(problem, initial_state, controls):
     """
-    Simulate double integrator trajectory.
+    Simulate trajectory using problem-specific dynamics.
 
     Args:
-        initial_state: [2] - [position, velocity]
-        controls: [horizon, 1] - acceleration commands
-        dt: Time step
+        problem: Problem instance with simulate_step() method
+        initial_state: [state_dim] - Initial state tensor
+        controls: [horizon, control_dim] - Control sequence
 
     Returns:
-        states: [horizon+1, 2] - State trajectory including initial state
+        states: [horizon+1, state_dim] - State trajectory including initial state
         times: [horizon+1] - Time points
     """
     horizon = len(controls)
     states = [initial_state.cpu().numpy()]
 
-    pos, vel = initial_state[0].item(), initial_state[1].item()
+    current_state = initial_state.cpu().numpy()
 
     for t in range(horizon):
-        acc = controls[t, 0].item()
-        # Exact integration for double integrator
-        pos = pos + vel * dt + 0.5 * acc * dt * dt
-        vel = vel + acc * dt
-        states.append([pos, vel])
+        control = controls[t].cpu().numpy()
+        # Use problem's dynamics for simulation
+        next_state = problem.simulate_step(current_state, control)
+        states.append(next_state)
+        current_state = next_state
 
     states = np.array(states)
-    times = np.arange(horizon + 1) * dt
+    times = np.arange(horizon + 1) * problem.dt
 
     return states, times
 
@@ -98,7 +100,7 @@ def plot_single_trajectory(
 ):
     """Plot a single trajectory comparison."""
 
-    # Position vs Time
+    # State[0] vs Time (typically position)
     ax_pos.plot(trc_times, trc_states[:, 0], 'b-', linewidth=2, label='TRC', alpha=0.8)
     ax_pos.plot(optimal_times, optimal_states[:, 0], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_pos.axhline(y=target_state[0].item(), color='r', linestyle=':', linewidth=1.5, label='Target')
@@ -108,7 +110,7 @@ def plot_single_trajectory(
     ax_pos.grid(True, alpha=0.3)
     ax_pos.set_title(f'{title_prefix}Position', fontsize=10)
 
-    # Velocity vs Time
+    # State[1] vs Time (typically velocity)
     ax_vel.plot(trc_times, trc_states[:, 1], 'b-', linewidth=2, label='TRC', alpha=0.8)
     ax_vel.plot(optimal_times, optimal_states[:, 1], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_vel.axhline(y=target_state[1].item(), color='r', linestyle=':', linewidth=1.5, label='Target')
@@ -123,12 +125,12 @@ def plot_single_trajectory(
     ax_ctrl.plot(control_times, trc_controls[:, 0].cpu().numpy(), 'b-', linewidth=2, label='TRC', alpha=0.8)
     ax_ctrl.plot(control_times, optimal_controls[:, 0].cpu().numpy(), 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_ctrl.set_xlabel('Time (s)', fontsize=10)
-    ax_ctrl.set_ylabel('Acceleration', fontsize=10)
+    ax_ctrl.set_ylabel('Control', fontsize=10)
     ax_ctrl.legend(fontsize=8, loc='best')
     ax_ctrl.grid(True, alpha=0.3)
     ax_ctrl.set_title(f'{title_prefix}Control Input', fontsize=10)
 
-    # Phase Space (Position vs Velocity)
+    # Phase Space (State[0] vs State[1])
     ax_phase.plot(trc_states[:, 0], trc_states[:, 1], 'b-', linewidth=2, label='TRC', alpha=0.8)
     ax_phase.plot(optimal_states[:, 0], optimal_states[:, 1], 'g--', linewidth=2, label='Optimal', alpha=0.7)
     ax_phase.scatter([initial_state[0].item()], [initial_state[1].item()],
@@ -144,6 +146,7 @@ def plot_single_trajectory(
 
 def visualize_multiple_trajectories(
     model,
+    problem,
     initial_states,
     target_states,
     optimal_controls,
@@ -181,9 +184,9 @@ def visualize_multiple_trajectories(
             output = model(initial, target)
             trc_controls = output['controls'][0]
 
-        # Simulate trajectories
-        trc_states, trc_times = double_integrator_simulate(initial[0], trc_controls)
-        optimal_states, optimal_times = double_integrator_simulate(initial[0], optimal_controls_sample)
+        # Simulate trajectories using problem dynamics
+        trc_states, trc_times = simulate_trajectory(problem, initial[0], trc_controls)
+        optimal_states, optimal_times = simulate_trajectory(problem, initial[0], optimal_controls_sample)
 
         # Calculate errors
         trc_final_error = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
@@ -248,7 +251,7 @@ def visualize_multiple_trajectories(
     ax_vel.grid(True, alpha=0.3)
 
     # Format Control plot
-    ax_ctrl.set_ylabel('Acceleration', fontsize=12, fontweight='bold')
+    ax_ctrl.set_ylabel('Control', fontsize=12, fontweight='bold')
     ax_ctrl.set_xlabel('Time (s)', fontsize=11)
     ax_ctrl.grid(True, alpha=0.3)
 
@@ -260,8 +263,12 @@ def visualize_multiple_trajectories(
     # Overall title with statistics
     avg_trc_error = np.mean(trc_errors)
     avg_optimal_error = np.mean(lqr_errors)  # lqr_errors contains optimal errors
+
+    # Get problem name for title
+    problem_name = problem.__class__.__name__.replace('Oscillator', ' Oscillator').replace('Integrator', ' Integrator')
+
     fig.suptitle(
-        f'Double Integrator Control - {num_examples} Trajectories Overlaid\n'
+        f'{problem_name} Control - {num_examples} Trajectories Overlaid\n'
         f'Avg Final Error: TRC={avg_trc_error:.3f}, Optimal={avg_optimal_error:.3f} | '
         f'Gap: {((avg_trc_error - avg_optimal_error) / avg_optimal_error * 100):.2f}%',
         fontsize=14, fontweight='bold'
@@ -278,6 +285,7 @@ def visualize_multiple_trajectories(
 
 def visualize_detailed_example(
     model,
+    problem,
     initial_states,
     target_states,
     optimal_controls,
@@ -296,9 +304,9 @@ def visualize_detailed_example(
         output = model(initial, target)
         trc_controls = output['controls'][0]
 
-    # Simulate trajectories
-    trc_states, trc_times = double_integrator_simulate(initial[0], trc_controls)
-    optimal_states, optimal_times = double_integrator_simulate(initial[0], optimal_controls_sample)
+    # Simulate trajectories using problem dynamics
+    trc_states, trc_times = simulate_trajectory(problem, initial[0], trc_controls)
+    optimal_states, optimal_times = simulate_trajectory(problem, initial[0], optimal_controls_sample)
 
     # Create detailed figure
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -314,8 +322,11 @@ def visualize_detailed_example(
     trc_final_error = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
     optimal_final_error = np.linalg.norm(optimal_states[-1] - target[0].cpu().numpy())
 
+    # Get problem name for title
+    problem_name = problem.__class__.__name__.replace('Oscillator', ' Oscillator').replace('Integrator', ' Integrator')
+
     fig.suptitle(
-        f'Double Integrator Control - Detailed Example\n'
+        f'{problem_name} Control - Detailed Example\n'
         f'Initial: pos={initial[0, 0]:.2f}, vel={initial[0, 1]:.2f} | '
         f'Target: pos={target[0, 0]:.2f}, vel={target[0, 1]:.2f}\n'
         f'Final Error - TRC: {trc_final_error:.4f}, Optimal: {optimal_final_error:.4f}',
@@ -333,6 +344,7 @@ def visualize_detailed_example(
 
 def plot_error_distribution(
     model,
+    problem,
     initial_states,
     target_states,
     optimal_controls,
@@ -357,9 +369,9 @@ def plot_error_distribution(
             output = model(initial, target)
             trc_controls = output['controls'][0]
 
-            # Simulate trajectories
-            trc_states, _ = double_integrator_simulate(initial[0], trc_controls)
-            optimal_states, _ = double_integrator_simulate(initial[0], optimal_controls_sample)
+            # Simulate trajectories using problem dynamics
+            trc_states, _ = simulate_trajectory(problem, initial[0], trc_controls)
+            optimal_states, _ = simulate_trajectory(problem, initial[0], optimal_controls_sample)
 
             # Calculate final errors
             trc_err = np.linalg.norm(trc_states[-1] - target[0].cpu().numpy())
@@ -424,8 +436,10 @@ def plot_error_distribution(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize double integrator trajectories")
+    parser = argparse.ArgumentParser(description="Visualize control trajectories for any problem")
 
+    parser.add_argument('--problem', type=str, required=True,
+                       help='Problem name (e.g., vanderpol, double_integrator, pendulum)')
     parser.add_argument('--checkpoint', type=str,
                        default='outputs/supervised_medium/best_model.pt',
                        help='Path to trained model checkpoint')
@@ -452,6 +466,11 @@ def main():
 
     print(f"Using device: {device}")
 
+    # Load problem instance
+    print(f"Loading problem: {args.problem}")
+    problem = get_problem(args.problem)
+    print(f"✓ Problem loaded: {problem.__class__.__name__}")
+
     # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -470,7 +489,7 @@ def main():
     # 1. Multiple trajectories
     print("\n1. Creating multiple trajectory comparison...")
     fig1 = visualize_multiple_trajectories(
-        model, initial_states, target_states, optimal_controls,
+        model, problem, initial_states, target_states, optimal_controls,
         num_examples=args.num_examples,
         device=device,
         output_path=output_dir / 'trajectories_comparison.png'
@@ -479,7 +498,7 @@ def main():
     # 2. Detailed single example
     print("\n2. Creating detailed example...")
     fig2 = visualize_detailed_example(
-        model, initial_states, target_states, optimal_controls,
+        model, problem, initial_states, target_states, optimal_controls,
         example_idx=0,
         device=device,
         output_path=output_dir / 'detailed_example.png'
@@ -488,7 +507,7 @@ def main():
     # 3. Error distribution
     print("\n3. Computing error distribution...")
     fig3 = plot_error_distribution(
-        model, initial_states, target_states, optimal_controls,
+        model, problem, initial_states, target_states, optimal_controls,
         device=device,
         output_path=output_dir / 'error_distribution.png'
     )
