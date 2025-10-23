@@ -1,0 +1,220 @@
+# Default Training Configuration for TinyRecursiveControl
+#
+# This configuration is problem-agnostic and can be used for any control problem.
+# Problem-specific settings (state_dim, control_dim, etc.) are loaded from
+# the problem config.
+
+# =============================================================================
+# Model Architecture
+# =============================================================================
+model:
+  # Model size preset: "small", "medium", "large", "two_level_medium", "custom"
+  # Use "custom" to specify all architecture parameters manually
+  size: "two_level_medium"
+
+  # Custom architecture parameters (only used if size="custom")
+  custom:
+    # Core dimensions
+    latent_dim: 128
+    num_heads: 4
+
+    # Two-level architecture (TRM-style hierarchical reasoning)
+    use_two_level: true
+    H_cycles: 3          # High-level reasoning cycles
+    L_cycles: 4          # Low-level reasoning cycles per H-cycle
+    L_layers: 2          # Layers per L-cycle
+
+    # Activations and normalization
+    activation_type: "silu"      # "silu" or "swiglu"
+    norm_type: "layernorm"       # "layernorm" or "rmsnorm"
+    norm_position: "pre"         # "pre" or "post"
+
+    # FFN expansion
+    expansion: 2.0      # FFN hidden dim = expansion * latent_dim
+
+    # Initialization
+    learnable_inits: true  # Learnable initial hidden states
+
+# =============================================================================
+# Training Hyperparameters
+# =============================================================================
+training:
+  # Basic training settings
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 1.0e-5
+
+  # Optimizer
+  optimizer:
+    type: "adamw"  # "adam", "adamw", "sgd"
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+
+  # Learning rate scheduler
+  scheduler:
+    type: "cosine"       # "cosine", "step", "plateau", "exponential", "none"
+
+    # Cosine annealing parameters
+    cosine_T_max: 100    # Should match epochs
+    cosine_eta_min: 1.0e-6
+
+    # Step decay parameters
+    step_size: 30
+    step_gamma: 0.1
+
+    # Plateau parameters
+    plateau_patience: 10
+    plateau_factor: 0.5
+    plateau_threshold: 1.0e-4
+
+    # Exponential decay
+    exponential_gamma: 0.95
+
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 1.0e-6
+    mode: "min"  # "min" for loss, "max" for accuracy
+
+  # Gradient clipping
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0
+    norm_type: 2  # L2 norm
+
+  # Mixed precision training
+  mixed_precision:
+    enabled: false  # Enable for faster training on modern GPUs
+    opt_level: "O1"
+
+# =============================================================================
+# Data Settings
+# =============================================================================
+data:
+  # Data loading
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: false
+
+  # Train/eval split (if not provided separately)
+  train_split: 0.9
+  eval_split: 0.1
+  shuffle: true
+
+  # Data augmentation (problem-specific settings override these)
+  augmentation:
+    enabled: false
+
+# =============================================================================
+# Logging and Checkpointing
+# =============================================================================
+logging:
+  # Logging intervals
+  log_interval: 10      # Log training metrics every N epochs
+  eval_interval: 10     # Evaluate on validation set every N epochs
+
+  # Checkpointing
+  save_checkpoints: true
+  save_best_only: true      # Only save checkpoints that improve validation loss
+  checkpoint_metric: "eval_loss"
+  checkpoint_mode: "min"    # "min" for loss, "max" for accuracy
+
+  # TensorBoard / Weights & Biases
+  tensorboard:
+    enabled: false
+    log_dir: "runs"
+
+  wandb:
+    enabled: false
+    project: "tinyrecursivecontrol"
+    entity: null  # Your W&B username/team
+    tags: []
+
+# =============================================================================
+# Hardware and Distributed Training
+# =============================================================================
+hardware:
+  # Device selection
+  device: "cuda"  # "cuda", "cpu", or "auto"
+
+  # Multi-GPU training
+  distributed:
+    enabled: false
+    backend: "nccl"  # "nccl" for GPU, "gloo" for CPU
+    world_size: 1
+
+  # GPU-specific settings
+  cuda:
+    benchmark: true        # Enable cudNN benchmark mode
+    deterministic: false   # Disable for better performance
+    amp_enabled: false     # Automatic Mixed Precision
+
+# =============================================================================
+# Reproducibility
+# =============================================================================
+reproducibility:
+  seed: 42
+  deterministic: false  # Set to true for fully reproducible results (slower)
+
+# =============================================================================
+# Debugging and Profiling
+# =============================================================================
+debug:
+  # Detect anomalies in gradients
+  detect_anomaly: false
+
+  # Profile training
+  profiler:
+    enabled: false
+    wait: 1
+    warmup: 1
+    active: 3
+    repeat: 2
+
+  # Fast dev run (for testing)
+  fast_dev_run: false
+  limit_train_batches: null  # Limit number of training batches (for debugging)
+  limit_eval_batches: null   # Limit number of eval batches (for debugging)
+
+# =============================================================================
+# Experiment Tracking
+# =============================================================================
+experiment:
+  # Experiment name (auto-generated if not specified)
+  name: null
+
+  # Tags for organizing experiments
+  tags: []
+
+  # Additional notes
+  notes: ""
+
+# =============================================================================
+# Model Presets
+# =============================================================================
+# Quick reference for model size presets:
+#
+# small:
+#   - latent_dim: 64, num_heads: 2
+#   - H_cycles: 2, L_cycles: 3
+#   - Parameters: ~100K
+#
+# medium:
+#   - latent_dim: 128, num_heads: 4
+#   - H_cycles: 3, L_cycles: 4
+#   - Parameters: ~500K
+#
+# large:
+#   - latent_dim: 256, num_heads: 8
+#   - H_cycles: 4, L_cycles: 5
+#   - Parameters: ~2M
+#
+# two_level_medium (recommended default):
+#   - Same as medium but with two-level architecture
+#   - Better performance on complex control tasks
+#
+# trm_style_medium:
+#   - Architecture matching TinyRecursiveModels paper
+#   - Includes all TRM-specific features

@@ -25,7 +25,7 @@ import argparse
 import logging
 
 sys.path.insert(0, 'src')
-from models import TinyRecursiveControl
+from models import TinyRecursiveControl, TRCConfig
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -138,15 +138,32 @@ def run_comparison(test_data_path: str, trc_checkpoint: str = None, device: str 
 
     # Create TRC model
     logger.info("\nInitializing TRC model...")
-    trc_model = TinyRecursiveControl.create_medium()
 
     if trc_checkpoint:
         logger.info(f"Loading checkpoint from {trc_checkpoint}")
         checkpoint = torch.load(trc_checkpoint, map_location=device)
+
+        # Load config from checkpoint's directory
+        checkpoint_dir = Path(trc_checkpoint).parent
+        config_path = checkpoint_dir / 'config.json'
+
+        if config_path.exists():
+            logger.info(f"Loading model config from {config_path}")
+            with open(config_path, 'r') as f:
+                config_dict = json.load(f)
+            config = TRCConfig(**config_dict)
+            trc_model = TinyRecursiveControl(config)
+            logger.info(f"✓ Model created from config (two_level={config.use_two_level})")
+        else:
+            # Fallback for old checkpoints
+            logger.warning("No config.json found, using default medium model")
+            trc_model = TinyRecursiveControl.create_medium()
+
         trc_model.load_state_dict(checkpoint['model_state_dict'])
         logger.info("✓ Loaded trained model")
     else:
         logger.info("Using untrained model")
+        trc_model = TinyRecursiveControl.create_medium()
 
     trc_model = trc_model.to(device)
     trc_model.eval()

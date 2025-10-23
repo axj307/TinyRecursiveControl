@@ -43,13 +43,15 @@ def load_dataset(data_path: str, train_split: float = 0.9):
     initial_states = torch.tensor(data['initial_states'], dtype=torch.float32)
     target_states = torch.tensor(data['target_states'], dtype=torch.float32)
     control_sequences = torch.tensor(data['control_sequences'], dtype=torch.float32)
+    state_trajectories = torch.tensor(data['state_trajectories'], dtype=torch.float32)
 
     logger.info(f"Dataset size: {len(initial_states)} samples")
     logger.info(f"  Initial states: {initial_states.shape}")
     logger.info(f"  Control sequences: {control_sequences.shape}")
+    logger.info(f"  State trajectories: {state_trajectories.shape}")
 
-    # Create dataset
-    dataset = TensorDataset(initial_states, target_states, control_sequences)
+    # Create dataset (now includes state trajectories)
+    dataset = TensorDataset(initial_states, target_states, control_sequences, state_trajectories)
 
     # Split train/val
     train_size = int(train_split * len(dataset))
@@ -85,15 +87,88 @@ def create_data_loaders(train_dataset, val_dataset, batch_size: int = 64):
     return train_loader, val_loader
 
 
-def train_epoch(model, train_loader, optimizer, device):
-    """Train for one epoch."""
+def simulate_double_integrator_trajectory(initial_state, controls, dt=0.33):
+    """
+    Simulate double integrator trajectory from initial state and control sequence.
+
+    Args:
+        initial_state: Initial state [batch_size, 2] or [2]
+        controls: Control sequence [batch_size, horizon, 1] or [horizon, 1]
+        dt: Time step
+
+    Returns:
+        states: State trajectory [batch_size, horizon+1, 2] or [horizon+1, 2]
+    """
+    # Handle both batched and single trajectories
+    if len(initial_state.shape) == 1:
+        # Single trajectory
+        initial_state = initial_state.unsqueeze(0)
+        controls = controls.unsqueeze(0)
+        squeeze_output = True
+    else:
+        squeeze_output = False
+
+    batch_size = initial_state.shape[0]
+    horizon = controls.shape[1]
+
+    # Initialize states tensor
+    states = torch.zeros(batch_size, horizon + 1, 2, device=initial_state.device, dtype=initial_state.dtype)
+    states[:, 0] = initial_state
+
+    # Simulate forward using double integrator dynamics
+    for t in range(horizon):
+        pos = states[:, t, 0]
+        vel = states[:, t, 1]
+        acc = controls[:, t, 0]  # Extract scalar acceleration
+
+        # Exact discrete-time integration
+        # position: x_{t+1} = x_t + v_t * dt + 0.5 * a_t * dt^2
+        # velocity: v_{t+1} = v_t + a_t * dt
+        new_pos = pos + vel * dt + 0.5 * acc * dt**2
+        new_vel = vel + acc * dt
+
+        states[:, t + 1, 0] = new_pos
+        states[:, t + 1, 1] = new_vel
+
+    if squeeze_output:
+        states = states.squeeze(0)
+
+    return states
+
+
+def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0.0, dt=0.33):
+    """
+    Train for one epoch.
+
+    Args:
+        model: TRC model
+        train_loader: Training data loader
+        optimizer: Optimizer
+        device: Device to train on
+        trajectory_loss_weight: Weight for trajectory loss (0 = control-only, >0 = add trajectory loss)
+        dt: Time step for trajectory simulation
+
+    Returns:
+        Average loss for the epoch
+    """
     model.train()
     total_loss = 0.0
+    total_control_loss = 0.0
+    total_trajectory_loss = 0.0
     num_batches = 0
 
     progress_bar = tqdm(train_loader, desc='Training')
 
-    for initial, target, controls_gt in progress_bar:
+    for batch_data in progress_bar:
+        # Unpack batch (now includes state trajectories)
+        if len(batch_data) == 4:
+            initial, target, controls_gt, states_gt = batch_data
+            states_gt = states_gt.to(device)
+        else:
+            # Backward compatibility if state_trajectories not in dataset
+            initial, target, controls_gt = batch_data
+            states_gt = None
+
         initial = initial.to(device)
         target = target.to(device)
         controls_gt = controls_gt.to(device)
@@ -103,8 +178,23 @@ def train_epoch(model, train_loader, optimizer, device):
         output = model(initial, target)
         controls_pred = output['controls']
 
-        # Loss: MSE between predicted and ground truth controls
-        loss = F.mse_loss(controls_pred, controls_gt)
+        # Control loss: MSE between predicted and ground truth controls
+        control_loss = F.mse_loss(controls_pred, controls_gt)
+
+        # Trajectory loss (if enabled and states_gt available)
+        if trajectory_loss_weight > 0.0 and states_gt is not None:
+            # Simulate trajectory from predicted controls
+            states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+
+            # Trajectory MSE
+            trajectory_loss = F.mse_loss(states_pred, states_gt)
+
+            # Combined loss
+            loss = control_loss + trajectory_loss_weight * trajectory_loss
+
+            total_trajectory_loss += trajectory_loss.item()
+        else:
+            loss = control_loss
 
         # Backward pass
         loss.backward()
@@ -116,23 +206,54 @@ def train_epoch(model, train_loader, optimizer, device):
 
         # Track metrics
         total_loss += loss.item()
+        total_control_loss += control_loss.item()
         num_batches += 1
 
         # Update progress bar
-        progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
+        if trajectory_loss_weight > 0.0 and states_gt is not None:
+            progress_bar.set_postfix({
+                'loss': f'{loss.item():.4f}',
+                'ctrl': f'{control_loss.item():.4f}',
+                'traj': f'{trajectory_loss.item():.4f}'
+            })
+        else:
+            progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
 
     avg_loss = total_loss / num_batches
     return avg_loss
 
 
-def validate(model, val_loader, device):
-    """Validate model."""
+def validate(model, val_loader, device, trajectory_loss_weight=0.0, dt=0.33):
+    """
+    Validate model.
+
+    Args:
+        model: TRC model
+        val_loader: Validation data loader
+        device: Device
+        trajectory_loss_weight: Weight for trajectory loss
+        dt: Time step for trajectory simulation
+
+    Returns:
+        Average validation loss
+    """
     model.eval()
     total_loss = 0.0
+    total_control_loss = 0.0
+    total_trajectory_loss = 0.0
     num_batches = 0
 
     with torch.no_grad():
-        for initial, target, controls_gt in val_loader:
+        for batch_data in val_loader:
+            # Unpack batch (now includes state trajectories)
+            if len(batch_data) == 4:
+                initial, target, controls_gt, states_gt = batch_data
+                states_gt = states_gt.to(device)
+            else:
+                # Backward compatibility
+                initial, target, controls_gt = batch_data
+                states_gt = None
+
             initial = initial.to(device)
             target = target.to(device)
             controls_gt = controls_gt.to(device)
@@ -141,10 +262,20 @@ def validate(model, val_loader, device):
             output = model(initial, target)
             controls_pred = output['controls']
 
-            # Loss
-            loss = F.mse_loss(controls_pred, controls_gt)
+            # Control loss
+            control_loss = F.mse_loss(controls_pred, controls_gt)
+
+            # Trajectory loss (if enabled)
+            if trajectory_loss_weight > 0.0 and states_gt is not None:
+                states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+                trajectory_loss = F.mse_loss(states_pred, states_gt)
+                loss = control_loss + trajectory_loss_weight * trajectory_loss
+                total_trajectory_loss += trajectory_loss.item()
+            else:
+                loss = control_loss
 
             total_loss += loss.item()
+            total_control_loss += control_loss.item()
             num_batches += 1
 
     avg_loss = total_loss / num_batches
@@ -161,6 +292,8 @@ def train(
     output_dir: str = 'outputs/supervised',
     patience: int = 20,
     scheduler_type: str = 'cosine',
+    trajectory_loss_weight: float = 0.0,
+    dt: float = 0.33,
 ):
     """
     Main training loop.
@@ -209,10 +342,10 @@ def train(
         logger.info(f"\nEpoch {epoch+1}/{epochs}")
 
         # Train
-        train_loss = train_epoch(model, train_loader, optimizer, device)
+        train_loss = train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight, dt)
 
         # Validate
-        val_loss = validate(model, val_loader, device)
+        val_loss = validate(model, val_loader, device, trajectory_loss_weight, dt)
 
         # Get current learning rate
         current_lr = optimizer.param_groups[0]['lr']
