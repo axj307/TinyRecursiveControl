@@ -182,8 +182,9 @@ def simulate_vanderpol_torch(initial_state, controls, mu=1.0, dt=0.05):
         return dx, dv
 
     for t in range(horizon):
-        x = states[:, t, 0]
-        v = states[:, t, 1]
+        # Clone to avoid in-place operation issues with gradient computation
+        x = states[:, t, 0].clone()
+        v = states[:, t, 1].clone()
         u = controls[:, t, 0]
 
         # RK4 steps
