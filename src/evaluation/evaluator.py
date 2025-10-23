@@ -2,6 +2,7 @@
 Evaluation Script for TinyRecursiveControl
 
 Comprehensive evaluation of trained models on test sets.
+Supports multiple control problems through environment abstraction.
 """
 
 import torch
@@ -10,97 +11,105 @@ import argparse
 import sys
 import json
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 import logging
 from tqdm import tqdm
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.models import TinyRecursiveControl
+from src.models import TinyRecursiveControl, TRCConfig
+from src.environments import get_problem, list_problems, BaseControlProblem
+from src.config import get_config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-def double_integrator_dynamics(state_batch, control_batch, dt=0.33):
+def simulate_trajectory(problem: BaseControlProblem,
+                       initial_states: torch.Tensor,
+                       controls: torch.Tensor) -> torch.Tensor:
     """
-    Simulate double integrator dynamics.
+    Simulate trajectories using problem dynamics.
 
     Args:
-        state_batch: [batch, 2] - [position, velocity]
-        control_batch: [batch, horizon, 1] - accelerations
-        dt: Time step
+        problem: Control problem instance
+        initial_states: [batch, state_dim] - initial states
+        controls: [batch, horizon, control_dim] - control sequences
 
     Returns:
-        final_states: [batch, 2] - final [position, velocity]
+        final_states: [batch, state_dim] - final states after applying controls
     """
-    batch_size = state_batch.shape[0]
-    horizon = control_batch.shape[1]
+    batch_size = initial_states.shape[0]
+    horizon = controls.shape[1]
 
     final_states = []
 
     for b in range(batch_size):
-        pos, vel = state_batch[b]
+        state = initial_states[b].detach().cpu().numpy()
 
         for t in range(horizon):
-            acc = control_batch[b, t, 0]
-            # Exact integration for double integrator
-            pos = pos + vel * dt + 0.5 * acc * dt * dt
-            vel = vel + acc * dt
+            control = controls[b, t].detach().cpu().numpy()
+            state = problem.simulate_step(state, control)
 
-        final_states.append(torch.tensor([pos, vel]))
+        final_states.append(torch.tensor(state, dtype=torch.float32))
 
-    return torch.stack(final_states).to(state_batch.device)
+    return torch.stack(final_states).to(initial_states.device)
 
 
 def evaluate_controls(
+    problem: BaseControlProblem,
     initial_states: torch.Tensor,
     target_states: torch.Tensor,
     controls: torch.Tensor,
-    dt: float = 0.33,
+    success_threshold: float = 0.1,
 ) -> Dict:
     """
-    Evaluate control quality.
+    Evaluate control quality using problem-specific dynamics.
 
     Args:
-        initial_states: [N, 2]
-        target_states: [N, 2]
-        controls: [N, horizon, 1]
-        dt: Time step
+        problem: Control problem instance
+        initial_states: [N, state_dim] - initial states
+        target_states: [N, state_dim] - target states
+        controls: [N, horizon, control_dim] - control sequences
+        success_threshold: Error threshold for success rate
 
     Returns:
         Dictionary with metrics
     """
-    # Simulate trajectories
-    final_states = double_integrator_dynamics(initial_states, controls, dt)
+    # Simulate trajectories using problem dynamics
+    final_states = simulate_trajectory(problem, initial_states, controls)
 
-    # Calculate errors
-    position_errors = torch.abs(final_states[:, 0] - target_states[:, 0])
-    velocity_errors = torch.abs(final_states[:, 1] - target_states[:, 1])
-    total_errors = torch.norm(final_states - target_states, dim=1)
+    # Calculate state errors
+    state_errors = final_states - target_states
+    total_errors = torch.norm(state_errors, dim=1)
+
+    # Calculate per-dimension errors (for detailed analysis)
+    per_dim_errors = torch.abs(state_errors)
 
     # Calculate control cost
     control_costs = (controls ** 2).sum(dim=(1, 2))
 
     # Success rate (error < threshold)
-    success_threshold = 0.1
     successes = (total_errors < success_threshold).float()
 
     metrics = {
         'final_states': final_states.cpu().numpy(),
-        'position_error_mean': position_errors.mean().item(),
-        'position_error_std': position_errors.std().item(),
-        'velocity_error_mean': velocity_errors.mean().item(),
-        'velocity_error_std': velocity_errors.std().item(),
         'total_error_mean': total_errors.mean().item(),
         'total_error_std': total_errors.std().item(),
         'total_error_min': total_errors.min().item(),
         'total_error_max': total_errors.max().item(),
+        'total_error_median': total_errors.median().item(),
         'control_cost_mean': control_costs.mean().item(),
         'control_cost_std': control_costs.std().item(),
         'success_rate': successes.mean().item(),
     }
+
+    # Add per-dimension error statistics
+    for dim in range(problem.state_dim):
+        dim_errors = per_dim_errors[:, dim]
+        metrics[f'state_dim_{dim}_error_mean'] = dim_errors.mean().item()
+        metrics[f'state_dim_{dim}_error_std'] = dim_errors.std().item()
 
     return metrics
 
@@ -111,9 +120,22 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    # Extract model config from checkpoint if available
-    # Otherwise use default medium model
-    model = TinyRecursiveControl.create_medium()
+    # Load config from checkpoint's directory
+    checkpoint_dir = Path(checkpoint_path).parent
+    config_path = checkpoint_dir / 'config.json'
+
+    if config_path.exists():
+        logger.info(f"Loading model config from {config_path}")
+        with open(config_path, 'r') as f:
+            config_dict = json.load(f)
+        config = TRCConfig(**config_dict)
+        model = TinyRecursiveControl(config)
+        logger.info(f"✓ Model created from config (two_level={config.use_two_level})")
+    else:
+        # Fallback for old checkpoints
+        logger.warning("No config.json found, using default medium model")
+        model = TinyRecursiveControl.create_medium()
+
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     model.eval()
@@ -125,18 +147,22 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
 
 def evaluate_model(
     model: TinyRecursiveControl,
+    problem: BaseControlProblem,
     test_data_path: str,
     device: str = 'cpu',
     batch_size: int = 64,
+    success_threshold: float = 0.1,
 ) -> Dict:
     """
-    Evaluate model on test set.
+    Evaluate model on test set using problem-specific dynamics.
 
     Args:
         model: Trained TRC model
+        problem: Control problem instance for dynamics simulation
         test_data_path: Path to test data (.npz)
         device: Device to run on
         batch_size: Batch size for evaluation
+        success_threshold: Error threshold for success rate
 
     Returns:
         Dictionary with evaluation metrics
@@ -144,6 +170,9 @@ def evaluate_model(
     logger.info("=" * 70)
     logger.info("Evaluating Model")
     logger.info("=" * 70)
+    logger.info(f"Problem: {problem.name}")
+    logger.info(f"State dim: {problem.state_dim}, Control dim: {problem.control_dim}")
+    logger.info("")
 
     # Load test data
     data = np.load(test_data_path)
@@ -179,36 +208,52 @@ def evaluate_model(
 
     # Evaluate TRC controls
     logger.info("\nEvaluating TRC controls...")
-    trc_metrics = evaluate_controls(initial_states, target_states, predicted_controls)
+    trc_metrics = evaluate_controls(
+        problem, initial_states, target_states, predicted_controls,
+        success_threshold=success_threshold
+    )
 
     # Print results
     logger.info("\n" + "=" * 70)
     logger.info("TRC Model Results")
     logger.info("=" * 70)
-    logger.info(f"Position Error:  {trc_metrics['position_error_mean']:.4f} ± {trc_metrics['position_error_std']:.4f}")
-    logger.info(f"Velocity Error:  {trc_metrics['velocity_error_mean']:.4f} ± {trc_metrics['velocity_error_std']:.4f}")
+
+    # Print per-dimension errors
+    for dim in range(problem.state_dim):
+        logger.info(f"State dim {dim} Error: {trc_metrics[f'state_dim_{dim}_error_mean']:.4f} ± {trc_metrics[f'state_dim_{dim}_error_std']:.4f}")
+
     logger.info(f"Total Error:     {trc_metrics['total_error_mean']:.4f} ± {trc_metrics['total_error_std']:.4f}")
-    logger.info(f"  Min/Max:       {trc_metrics['total_error_min']:.4f} / {trc_metrics['total_error_max']:.4f}")
+    logger.info(f"  Min/Median/Max: {trc_metrics['total_error_min']:.4f} / {trc_metrics['total_error_median']:.4f} / {trc_metrics['total_error_max']:.4f}")
     logger.info(f"Control Cost:    {trc_metrics['control_cost_mean']:.4f} ± {trc_metrics['control_cost_std']:.4f}")
     logger.info(f"Success Rate:    {trc_metrics['success_rate']*100:.1f}%")
 
     results = {'trc': trc_metrics}
 
-    # Compare with optimal LQR if available
+    # Compare with optimal controls if available
     if has_optimal:
-        logger.info("\nEvaluating LQR (Optimal) controls...")
-        lqr_metrics = evaluate_controls(initial_states, target_states, optimal_controls)
+        logger.info("\nEvaluating Optimal controls...")
+        optimal_metrics = evaluate_controls(
+            problem, initial_states, target_states, optimal_controls,
+            success_threshold=success_threshold
+        )
 
         logger.info("\n" + "=" * 70)
-        logger.info("LQR (Optimal) Results")
+        logger.info("Optimal Controller Results")
         logger.info("=" * 70)
-        logger.info(f"Position Error:  {lqr_metrics['position_error_mean']:.4f} ± {lqr_metrics['position_error_std']:.4f}")
-        logger.info(f"Total Error:     {lqr_metrics['total_error_mean']:.4f} ± {lqr_metrics['total_error_std']:.4f}")
-        logger.info(f"Control Cost:    {lqr_metrics['control_cost_mean']:.4f} ± {lqr_metrics['control_cost_std']:.4f}")
-        logger.info(f"Success Rate:    {lqr_metrics['success_rate']*100:.1f}%")
+
+        # Print per-dimension errors
+        for dim in range(problem.state_dim):
+            logger.info(f"State dim {dim} Error: {optimal_metrics[f'state_dim_{dim}_error_mean']:.4f} ± {optimal_metrics[f'state_dim_{dim}_error_std']:.4f}")
+
+        logger.info(f"Total Error:     {optimal_metrics['total_error_mean']:.4f} ± {optimal_metrics['total_error_std']:.4f}")
+        logger.info(f"Control Cost:    {optimal_metrics['control_cost_mean']:.4f} ± {optimal_metrics['control_cost_std']:.4f}")
+        logger.info(f"Success Rate:    {optimal_metrics['success_rate']*100:.1f}%")
 
         # Compute gap
-        error_gap = (trc_metrics['total_error_mean'] - lqr_metrics['total_error_mean']) / lqr_metrics['total_error_mean'] * 100
+        if optimal_metrics['total_error_mean'] > 0:
+            error_gap = (trc_metrics['total_error_mean'] - optimal_metrics['total_error_mean']) / optimal_metrics['total_error_mean'] * 100
+        else:
+            error_gap = 0.0
 
         logger.info("\n" + "=" * 70)
         logger.info("Comparison")
@@ -222,7 +267,7 @@ def evaluate_model(
         else:
             logger.info("⚠ Consider more training or tuning")
 
-        results['lqr'] = lqr_metrics
+        results['optimal'] = optimal_metrics
         results['comparison'] = {'error_gap_percent': error_gap}
 
     logger.info("=" * 70)
@@ -233,16 +278,25 @@ def evaluate_model(
 def main():
     parser = argparse.ArgumentParser(description="Evaluate trained TinyRecursiveControl model")
 
+    # Required arguments
     parser.add_argument('--checkpoint', type=str, required=True,
                        help='Path to model checkpoint')
     parser.add_argument('--test_data', type=str, required=True,
                        help='Path to test data (.npz)')
+    parser.add_argument('--problem', type=str, required=True,
+                       help=f'Problem name. Available: {", ".join(list_problems())}')
+
+    # Optional arguments
     parser.add_argument('--output', type=str, default=None,
                        help='Output file for results (JSON)')
     parser.add_argument('--device', type=str, default='auto',
                        help='Device (cuda/cpu/auto)')
     parser.add_argument('--batch_size', type=int, default=64,
                        help='Batch size for evaluation')
+    parser.add_argument('--success_threshold', type=float, default=0.1,
+                       help='Error threshold for success rate')
+    parser.add_argument('--config_dir', type=str, default='configs',
+                       help='Configuration directory')
 
     args = parser.parse_args()
 
@@ -254,15 +308,63 @@ def main():
 
     logger.info(f"Using device: {device}")
 
+    # Load configuration
+    try:
+        config = get_config(args.problem, config_dir=args.config_dir)
+    except FileNotFoundError as e:
+        logger.error(f"Error: {e}")
+        logger.error(f"Available problems: {', '.join(list_problems())}")
+        sys.exit(1)
+
+    problem_cfg = config["problem"]
+
+    # Create problem instance
+    logger.info(f"Creating problem instance: {args.problem}")
+
+    problem_kwargs = {
+        "dt": problem_cfg["dynamics"]["dt"],
+        "horizon": problem_cfg["dynamics"]["horizon"],
+    }
+
+    # Add problem-specific parameters
+    dynamics_cfg = problem_cfg.get("dynamics", {})
+    for key, value in dynamics_cfg.items():
+        if key not in ["dt", "horizon", "total_time"]:
+            problem_kwargs[key] = value
+
+    # Handle bounds
+    bounds_cfg = problem_cfg.get("bounds", {})
+    if "control" in bounds_cfg:
+        control_lower = bounds_cfg["control"].get("lower", [])
+        control_upper = bounds_cfg["control"].get("upper", [])
+        if control_lower and control_upper:
+            max_control = max(abs(control_lower[0]), abs(control_upper[0]))
+            if args.problem == "double_integrator":
+                problem_kwargs["control_bounds"] = max_control
+            elif args.problem == "pendulum":
+                problem_kwargs["max_torque"] = max_control
+
+    try:
+        problem = get_problem(args.problem, **problem_kwargs)
+    except Exception as e:
+        logger.error(f"Error creating problem: {e}")
+        sys.exit(1)
+
+    logger.info(f"✓ Problem created: {problem.name}")
+    logger.info(f"  State dim: {problem.state_dim}, Control dim: {problem.control_dim}")
+    logger.info("")
+
     # Load model
     model = load_model(args.checkpoint, device)
 
     # Evaluate
     results = evaluate_model(
         model=model,
+        problem=problem,
         test_data_path=args.test_data,
         device=device,
         batch_size=args.batch_size,
+        success_threshold=args.success_threshold,
     )
 
     # Save results
