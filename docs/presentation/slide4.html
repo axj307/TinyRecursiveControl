@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+    }
+    .header {
+      background: #2563eb;
+      padding: 12pt 40pt;
+      border-bottom: 4pt solid #14b8a6;
+    }
+    h1 {
+      font-size: 26pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .content {
+      display: flex;
+      padding: 8pt 40pt 50pt 40pt;
+      gap: 20pt;
+    }
+    .left-column {
+      flex: 1;
+    }
+    .right-column {
+      flex: 0 0 280pt;
+    }
+    .step {
+      background: #ffffff;
+      border-left: 5pt solid #14b8a6;
+      padding: 6pt 8pt;
+      margin-bottom: 5pt;
+    }
+    .step-title {
+      font-size: 13pt;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 0 0 2pt 0;
+    }
+    .step-desc {
+      font-size: 11pt;
+      color: #475569;
+      margin: 0;
+      line-height: 1.2;
+    }
+    .nested {
+      background: #eff6ff;
+      border: 2pt dashed #93c5fd;
+      padding: 5pt;
+      margin: 4pt 0 0 12pt;
+    }
+    .nested-title {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #1e40af;
+      margin: 0 0 3pt 0;
+    }
+    ul {
+      margin: 2pt 0;
+      padding-left: 12pt;
+    }
+    li {
+      font-size: 10pt;
+      color: #1e40af;
+      margin: 1pt 0;
+    }
+    .key-box {
+      background: #14b8a6;
+      color: #ffffff;
+      padding: 6pt 8pt;
+      margin-top: 6pt;
+      border-radius: 4pt;
+    }
+    .key-title {
+      font-size: 12pt;
+      font-weight: bold;
+      margin: 0;
+      text-align: center;
+    }
+    code {
+      font-family: Courier New, monospace;
+      font-size: 9pt;
+      background: #e2e8f0;
+      padding: 1pt 3pt;
+    }
+    .loop-diagram {
+      background: #ffffff;
+      border: 3pt solid #2563eb;
+      padding: 10pt;
+      border-radius: 6pt;
+    }
+    .diagram-title {
+      font-size: 13pt;
+      font-weight: bold;
+      color: #2563eb;
+      text-align: center;
+      margin: 0 0 8pt 0;
+    }
+    .outer-box {
+      background: #e0f2fe;
+      border: 3pt solid #2563eb;
+      padding: 8pt;
+      border-radius: 4pt;
+    }
+    .outer-label {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 0 0 6pt 0;
+      text-align: center;
+    }
+    .inner-box {
+      background: #f0fdfa;
+      border: 2pt dashed #14b8a6;
+      padding: 6pt;
+      border-radius: 3pt;
+      margin-bottom: 6pt;
+    }
+    .inner-label {
+      font-size: 10pt;
+      font-weight: bold;
+      color: #14b8a6;
+      margin: 0 0 4pt 0;
+      text-align: center;
+    }
+    .box-item {
+      font-size: 9pt;
+      color: #1e293b;
+      margin: 2pt 0;
+      padding-left: 6pt;
+    }
+    .box-item::before {
+      content: "•";
+      margin-right: 4pt;
+      color: #14b8a6;
+    }
+    .update-box {
+      background: #eff6ff;
+      border: 2pt solid #3b82f6;
+      padding: 4pt;
+      border-radius: 3pt;
+      text-align: center;
+    }
+    .update-text {
+      font-size: 9pt;
+      color: #1e40af;
+      margin: 0;
+      font-family: Courier New, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Recursive Refinement Process</h1>
+  </div>
+
+  <div class="content">
+    <div class="left-column">
+      <div class="step">
+        <p class="step-title">1. State Encoding</p>
+        <p class="step-desc">Encode states and time to latent <code>z_initial</code></p>
+      </div>
+
+      <div class="step">
+        <p class="step-title">2. Initial Control Generation</p>
+        <p class="step-desc">Generate <code>u₀ = Decoder(z_initial)</code></p>
+      </div>
+
+      <div class="step">
+        <p class="step-title">3. Recursive Refinement</p>
+        <p class="step-desc">For each cycle k = 1 to K:</p>
+
+        <div class="nested">
+          <p class="nested-title">Inner Reasoning (n steps):</p>
+          <ul>
+            <li>Simulate trajectory</li>
+            <li>Compute error</li>
+            <li>Update latent (weight sharing)</li>
+          </ul>
+        </div>
+
+        <p class="step-desc" style="margin-top: 4pt;">Generate <code>uₖ = uₖ₋₁ + Δu</code></p>
+      </div>
+
+      <div class="key-box">
+        <p class="key-title">Trajectory feedback guides refinement</p>
+      </div>
+    </div>
+
+    <div class="right-column">
+      <div class="loop-diagram">
+        <p class="diagram-title">Loop Structure</p>
+
+        <div class="outer-box">
+          <p class="outer-label">K Outer Cycles</p>
+
+          <div class="inner-box">
+            <p class="inner-label">n Inner Cycles</p>
+            <p class="box-item">Simulate trajectory</p>
+            <p class="box-item">Compute error</p>
+            <p class="box-item">Update latent z</p>
+            <p class="box-item">Weight sharing ✓</p>
+          </div>
+
+          <div class="update-box">
+            <p class="update-text">Generate Δu</p>
+          </div>
+
+          <div class="update-box" style="margin-top: 4pt;">
+            <p class="update-text">uₖ = uₖ₋₁ + Δu</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

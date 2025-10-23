@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+    }
+    .header {
+      background: #2563eb;
+      padding: 8pt 40pt;
+      border-bottom: 4pt solid #14b8a6;
+    }
+    h1 {
+      font-size: 22pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .diagram-section {
+      padding: 0;
+      margin: 0;
+      text-align: center;
+    }
+    .diagram-section img {
+      width: 720pt;
+      height: auto;
+      display: block;
+      margin: 0;
+    }
+    .iter-boxes {
+      padding: 0 40pt;
+      margin: 2pt 0 0 0;
+    }
+    .iter-box {
+      padding: 3pt 10pt;
+      margin: 1pt 0;
+      border: 2pt solid #000000;
+      border-radius: 4pt;
+      text-align: center;
+      font-size: 8pt;
+    }
+    .iter-box p {
+      margin: 0;
+    }
+    .iter-blue {
+      background: #dbeafe;
+      border-color: #3b82f6;
+      color: #1e40af;
+    }
+    .iter-orange {
+      background: #fed7aa;
+      border-color: #f59e0b;
+      color: #78350f;
+    }
+    .iter-purple {
+      background: #e9d5ff;
+      border-color: #9333ea;
+      color: #581c87;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>TRC Architecture (Adapted from TRM)</h1>
+  </div>
+
+  <div class="diagram-section">
+    <img src="trc_architecture.png" alt="TRC Architecture Diagram" />
+  </div>
+
+  <div class="iter-boxes">
+    <div class="iter-box iter-blue">
+      <p>Step 1, 2, ..., n : Update z given x, u, error (Improve latent)</p>
+    </div>
+    <div class="iter-box iter-orange">
+      <p>Step n+1 : Update u given u, z → uₖ = uₖ₋₁ + Δu (Improve controls)</p>
+    </div>
+    <div class="iter-box iter-purple">
+      <p>Applied K = 3 outer cycles (iteratively refine controls)</p>
+    </div>
+  </div>
+</body>
+</html>

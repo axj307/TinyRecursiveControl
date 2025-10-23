@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #2563eb;
+      font-family: Arial, sans-serif;
+    }
+    .title-container {
+      text-align: center;
+      padding: 40pt;
+    }
+    h1 {
+      font-size: 44pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0 0 20pt 0;
+      line-height: 1.2;
+    }
+    .subtitle {
+      font-size: 24pt;
+      color: #bfdbfe;
+      margin: 0 0 40pt 0;
+    }
+    .highlights {
+      text-align: left;
+      margin: 0 auto;
+      max-width: 600pt;
+    }
+    .highlight-item {
+      font-size: 18pt;
+      color: #ffffff;
+      margin: 12pt 0;
+      padding-left: 30pt;
+      position: relative;
+    }
+    .highlight-item::before {
+      content: "▸";
+      position: absolute;
+      left: 0;
+      color: #14b8a6;
+      font-size: 24pt;
+    }
+    .footer {
+      position: absolute;
+      bottom: 40pt;
+      font-size: 14pt;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="title-container">
+    <h1>Tiny Recursive Control (TRC)</h1>
+    <p class="subtitle">Parameter-Efficient Control Synthesis Through Recursive Reasoning</p>
+
+    <div class="highlights">
+      <p class="highlight-item">150K-5M parameters vs 3B+ for LLM-based approaches</p>
+      <p class="highlight-item">Recursive refinement for optimal control synthesis</p>
+      <p class="highlight-item">Adapting Tiny Recursive Models to continuous control</p>
+    </div>
+  </div>
+
+  <p class="footer">Inspired by: Less is More: Recursive Reasoning with Tiny Networks (arXiv:2510.04871)</p>
+</body>
+</html>

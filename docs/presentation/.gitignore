@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Generated presentation
+*.pptx
+
+# Generated images
+*.png
+*.svg
+
+# Old/intermediate versions
+*_old.html
+*_toolong.html
+
+# Optional validation infrastructure (not used in build)
+ooxml/
+
+# Temporary files
+*.tmp
+.DS_Store

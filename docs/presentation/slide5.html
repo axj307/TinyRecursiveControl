@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+    }
+    .header {
+      background: #2563eb;
+      padding: 14pt 40pt;
+      border-bottom: 4pt solid #14b8a6;
+    }
+    h1 {
+      font-size: 27pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .content {
+      display: flex;
+      padding: 6pt 40pt 50pt 40pt;
+      gap: 25pt;
+    }
+    .left-column {
+      flex: 0 0 250pt;
+    }
+    .right-column {
+      flex: 1;
+    }
+    .metric-box {
+      background: #ffffff;
+      border-left: 4pt solid #14b8a6;
+      padding: 8pt 10pt;
+      margin-bottom: 6pt;
+    }
+    .metric-label {
+      font-size: 11pt;
+      color: #64748b;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .metric-value {
+      font-size: 20pt;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 2pt 0 0 0;
+    }
+    .metric-sub {
+      font-size: 10pt;
+      color: #475569;
+      margin: 1pt 0 0 0;
+    }
+    .success-box {
+      background: #14b8a6;
+      color: #ffffff;
+      padding: 12pt;
+      border-radius: 4pt;
+      text-align: center;
+    }
+    .success-value {
+      font-size: 30pt;
+      font-weight: bold;
+      margin: 0;
+    }
+    .success-label {
+      font-size: 11pt;
+      margin: 2pt 0 0 0;
+    }
+    .viz-title {
+      font-size: 14pt;
+      color: #1e293b;
+      font-weight: bold;
+      margin: 0 0 8pt 0;
+    }
+    .viz-image {
+      background: #ffffff;
+      border: 2pt solid #cbd5e1;
+      border-radius: 4pt;
+      height: 250pt;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Results and Performance</h1>
+  </div>
+
+  <div class="content">
+    <div class="left-column">
+      <div class="metric-box">
+        <p class="metric-label">Final Error</p>
+        <p class="metric-value">0.016</p>
+        <p class="metric-sub">98% better than LQR</p>
+      </div>
+
+      <div class="metric-box">
+        <p class="metric-label">Parameters</p>
+        <p class="metric-value">530K</p>
+        <p class="metric-sub">Medium model</p>
+      </div>
+
+      <div class="metric-box">
+        <p class="metric-label">Inference</p>
+        <p class="metric-value">~5ms</p>
+        <p class="metric-sub">Real-time capable</p>
+      </div>
+
+      <div class="success-box">
+        <p class="success-value">100%</p>
+        <p class="success-label">Success Rate</p>
+      </div>
+    </div>
+
+    <div class="right-column">
+      <p class="viz-title">Trajectory Comparison: TRC vs Baselines</p>
+      <div class="viz-image">
+        <img src="trajectories_comparison.png" alt="Results" />
+      </div>
+    </div>
+  </div>
+</body>
+</html>

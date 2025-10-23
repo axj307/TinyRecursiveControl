@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+    }
+    .header {
+      background: #2563eb;
+      padding: 10pt 40pt;
+      border-bottom: 4pt solid #14b8a6;
+    }
+    h1 {
+      font-size: 24pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .content {
+      padding: 5pt 50pt 50pt 50pt;
+    }
+    .flowchart {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2pt;
+    }
+    .flow-box {
+      background: #ffffff;
+      border: 2pt solid #2563eb;
+      padding: 4pt 10pt;
+      border-radius: 3pt;
+      text-align: center;
+      width: 280pt;
+    }
+    .flow-title {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 0;
+    }
+    .flow-formula {
+      font-size: 9pt;
+      font-family: Courier New, monospace;
+      color: #475569;
+      margin: 0;
+    }
+    .outer-loop {
+      background: #e0f2fe;
+      border: 3pt solid #2563eb;
+      padding: 5pt;
+      border-radius: 4pt;
+      width: 380pt;
+    }
+    .outer-loop-title {
+      font-size: 10pt;
+      font-weight: bold;
+      color: #2563eb;
+      text-align: center;
+      margin: 0 0 3pt 0;
+    }
+    .inner-loop {
+      background: #f0fdfa;
+      border: 2pt dashed #14b8a6;
+      padding: 4pt;
+      border-radius: 3pt;
+      margin: 2pt 0;
+    }
+    .inner-loop-title {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #14b8a6;
+      text-align: center;
+      margin: 0 0 2pt 0;
+    }
+    .loop-step {
+      font-size: 9pt;
+      color: #1e293b;
+      margin: 1pt 0;
+      text-align: center;
+    }
+    .arrow {
+      font-size: 14pt;
+      color: #2563eb;
+      font-weight: bold;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Complete TRC Method Flowchart</h1>
+  </div>
+
+  <div class="content">
+    <div class="flowchart">
+      <div class="flow-box">
+        <p class="flow-title">Input: x, x_target, t</p>
+      </div>
+
+      <p class="arrow">↓</p>
+
+      <div class="flow-box">
+        <p class="flow-title">State Encoder</p>
+        <p class="flow-formula">z = Enc(x, x_t, t)</p>
+      </div>
+
+      <p class="arrow">↓</p>
+
+      <div class="flow-box">
+        <p class="flow-title">Initial Control Gen</p>
+        <p class="flow-formula">u₀ = Dec(z)</p>
+      </div>
+
+      <p class="arrow">↓</p>
+
+      <div class="outer-loop">
+        <p class="outer-loop-title">K Outer Refinement Cycles (K=3)</p>
+
+        <p class="loop-step">Simulate → x_final | Compute error: e = x_final - x_t</p>
+
+        <div class="inner-loop">
+          <p class="inner-loop-title">n Inner Reasoning (n=3) - Weight Sharing</p>
+          <p class="loop-step">z = ReasoningModule(z, e, u)</p>
+        </div>
+
+        <p class="loop-step">Δu = ResidualDec(z, u) | uₖ = uₖ₋₁ + Δu</p>
+      </div>
+
+      <p class="arrow">↓</p>
+
+      <div class="flow-box">
+        <p class="flow-title">Output: Final Controls</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

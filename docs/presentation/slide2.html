@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 720pt;
+      height: 405pt;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+    }
+    .header {
+      background: #2563eb;
+      padding: 18pt 40pt;
+      border-bottom: 4pt solid #14b8a6;
+    }
+    h1 {
+      font-size: 30pt;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .content {
+      display: flex;
+      padding: 20pt 40pt 50pt 40pt;
+      gap: 30pt;
+    }
+    .left-column {
+      flex: 1;
+    }
+    .right-column {
+      flex: 1;
+    }
+    h2 {
+      font-size: 18pt;
+      color: #2563eb;
+      margin: 0 0 10pt 0;
+      font-weight: bold;
+    }
+    p {
+      font-size: 13pt;
+      color: #1e293b;
+      line-height: 1.3;
+      margin: 0 0 6pt 0;
+    }
+    .problem-box {
+      background: #ffffff;
+      border-left: 4pt solid #14b8a6;
+      padding: 8pt;
+      margin-bottom: 8pt;
+    }
+    .formula {
+      font-family: Courier New, monospace;
+      font-size: 13pt;
+      color: #475569;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12pt;
+    }
+    th {
+      background: #2563eb;
+      color: #ffffff;
+      padding: 8pt;
+      text-align: left;
+      font-weight: bold;
+    }
+    td {
+      padding: 8pt;
+      border-bottom: 1pt solid #cbd5e1;
+      color: #1e293b;
+    }
+    tr:nth-child(even) {
+      background: #f1f5f9;
+    }
+    .highlight {
+      color: #14b8a6;
+      font-weight: bold;
+    }
+    ul {
+      margin: 8pt 0;
+      padding-left: 20pt;
+    }
+    li {
+      margin: 4pt 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Problem Setup and Motivation</h1>
+  </div>
+
+  <div class="content">
+    <div class="left-column">
+      <h2>Control Problem</h2>
+
+      <div class="problem-box">
+        <p><b>State:</b> x = [position, velocity]</p>
+        <p><b>Control:</b> u = acceleration</p>
+        <p><b>Dynamics:</b> <span class="formula">x' = Ax + Bu</span></p>
+      </div>
+
+      <div class="problem-box">
+        <p><b>Objective:</b> Minimum energy control</p>
+        <p><span class="formula">min ∫ u² dt</span> subject to <span class="formula">x(T) = x_target</span></p>
+      </div>
+
+    </div>
+
+    <div class="right-column">
+      <h2>TRC vs LLM Control</h2>
+
+      <table>
+        <tr>
+          <th>Aspect</th>
+          <th>TRC</th>
+          <th>LLM</th>
+        </tr>
+        <tr>
+          <td><b>Parameters</b></td>
+          <td class="highlight">1-5M</td>
+          <td>3B+</td>
+        </tr>
+        <tr>
+          <td><b>Output</b></td>
+          <td class="highlight">Direct</td>
+          <td>Text→Parse</td>
+        </tr>
+        <tr>
+          <td><b>Data</b></td>
+          <td class="highlight">10K</td>
+          <td>Large corpus</td>
+        </tr>
+        <tr>
+          <td><b>Speed</b></td>
+          <td class="highlight">~5ms</td>
+          <td>~100ms</td>
+        </tr>
+        <tr>
+          <td><b>Memory</b></td>
+          <td class="highlight">~20MB</td>
+          <td>~6GB</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
