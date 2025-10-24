@@ -24,10 +24,11 @@ This guide will help you train and evaluate TinyRecursiveControl on the 7D rocke
 
 ## Prerequisites
 
-1. **Aerospace Dataset** - Already converted to TRC format
+1. **Aerospace Dataset** - Already converted AND NORMALIZED
    - Location: `data/rocket_landing/`
-   - Train: 3,849 samples
-   - Test: 963 samples
+   - Train: 3,849 samples (normalized)
+   - Test: 963 samples (normalized)
+   - **⚠️ CRITICAL**: Data MUST be normalized for training to work!
 
 2. **Environment** - Conda environment with PyTorch
    ```bash
@@ -38,6 +39,31 @@ This guide will help you train and evaluate TinyRecursiveControl on the 7D rocke
    ```bash
    pip install h5py  # If not already installed
    ```
+
+### Data Normalization (CRITICAL!)
+
+The rocket landing data has **very large values** (positions in thousands of meters, thrust in thousands of Newtons). Without normalization, training loss will be stuck at ~42 million and the model won't learn.
+
+**If you need to normalize the data**:
+```bash
+# Step 1: Normalize training data (compute statistics)
+python scripts/normalize_dataset.py \
+  --input data/rocket_landing/rocket_landing_dataset_train.npz \
+  --output data/rocket_landing/rocket_landing_dataset_train_normalized.npz \
+  --stats data/rocket_landing/normalization_stats.json \
+  --compute-stats --verify
+
+# Step 2: Normalize test data (use same statistics)
+python scripts/normalize_dataset.py \
+  --input data/rocket_landing/rocket_landing_dataset_test.npz \
+  --output data/rocket_landing/rocket_landing_dataset_test_normalized.npz \
+  --stats data/rocket_landing/normalization_stats.json \
+  --verify
+```
+
+**Why normalization is critical:**
+- **Without**: Loss ~42M, doesn't decrease, 0% success, model predicts zero thrust
+- **With**: Loss ~1-10, decreases to <0.5, >80% success, realistic predictions
 
 ## Quick Start
 
@@ -185,14 +211,30 @@ Landing is considered successful if:
 
 ### Issue: Data Not Found
 
-**Solution**: Convert aerospace-datasets first:
+**Solution**: Convert and normalize aerospace-datasets:
 ```bash
+# Step 1: Convert HDF5 to NPZ
 python3 -m src.data.aerospace_loader \
   --h5-path aerospace-datasets/rocket-landing/data/new_3dof_rocket_landing_with_mass.h5 \
   --output-dir data/rocket_landing \
   --train-ratio 0.8 \
   --random-seed 42
+
+# Step 2 & 3: Normalize (see Prerequisites section above)
 ```
+
+### Issue: Training Loss Not Decreasing (Stuck at ~42 Million)
+
+**Cause**: Data not normalized!
+
+**Symptoms**:
+- Loss starts and stays at ~42 million
+- Loss doesn't decrease over epochs
+- Model predicts near-zero controls
+- 0% landing success
+- Fuel usage ~0.1 kg (should be ~300 kg)
+
+**Solution**: Normalize the data using `scripts/normalize_dataset.py` (see Prerequisites section)
 
 ## Advanced Usage
 
