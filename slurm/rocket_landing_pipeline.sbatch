@@ -76,10 +76,13 @@ LEARNING_RATE=1e-3
 MODEL_TYPE="two_level_medium"
 
 # Trajectory Loss Weight (impacts training speed!)
-# 0.0 = control-only (FAST but may miss nonlinear dynamics)
-# 0.3 = light trajectory loss (RECOMMENDED: 30% slower, better accuracy)
-# 1.0 = full trajectory loss (SLOW: 50-100× slower, best accuracy)
-TRAJECTORY_LOSS_WEIGHT=0.3
+# 0.0 = control-only (RECOMMENDED for rocket landing - no data mismatch)
+# 0.3 = light trajectory loss (BROKEN: data mismatch causes negative fuel bug)
+# 1.0 = full trajectory loss (BROKEN: data mismatch causes negative fuel bug)
+# NOTE: Trajectory loss disabled due to normalized/unnormalized data mismatch
+#       Simulation receives normalized controls but expects real values
+#       Results in garbage predictions and negative fuel consumption
+TRAJECTORY_LOSS_WEIGHT=0.0
 
 # Problem-specific DT (from config)
 DT=0.5  # Time step for trajectory simulation
