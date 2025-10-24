@@ -118,34 +118,71 @@ echo "NOTE: Rocket landing uses pre-converted aerospace-datasets"
 echo "      No data generation required - dataset already available"
 echo ""
 
-TRAIN_DATA="$DATA_DIR/rocket_landing_dataset_train.npz"
-TEST_DATA="$DATA_DIR/rocket_landing_dataset_test.npz"
+TRAIN_DATA="$DATA_DIR/rocket_landing_dataset_train_normalized.npz"
+TEST_DATA="$DATA_DIR/rocket_landing_dataset_test_normalized.npz"
+NORM_STATS="$DATA_DIR/normalization_stats.json"
 
 # Check if data exists
 if [ ! -f "$TRAIN_DATA" ]; then
-    echo "ERROR: Training data not found: $TRAIN_DATA"
+    echo "ERROR: Normalized training data not found: $TRAIN_DATA"
     echo ""
-    echo "Please convert aerospace-datasets first:"
+    echo "Please convert and normalize aerospace-datasets first:"
+    echo ""
+    echo "Step 1: Convert HDF5 to NPZ:"
     echo "  python3 -m src.data.aerospace_loader \\"
     echo "    --h5-path aerospace-datasets/rocket-landing/data/new_3dof_rocket_landing_with_mass.h5 \\"
     echo "    --output-dir $DATA_DIR \\"
     echo "    --train-ratio 0.8 \\"
     echo "    --random-seed 42"
+    echo ""
+    echo "Step 2: Normalize training data:"
+    echo "  python3 scripts/normalize_dataset.py \\"
+    echo "    --input $DATA_DIR/rocket_landing_dataset_train.npz \\"
+    echo "    --output $DATA_DIR/rocket_landing_dataset_train_normalized.npz \\"
+    echo "    --stats $DATA_DIR/normalization_stats.json \\"
+    echo "    --compute-stats --verify"
+    echo ""
+    echo "Step 3: Normalize test data:"
+    echo "  python3 scripts/normalize_dataset.py \\"
+    echo "    --input $DATA_DIR/rocket_landing_dataset_test.npz \\"
+    echo "    --output $DATA_DIR/rocket_landing_dataset_test_normalized.npz \\"
+    echo "    --stats $DATA_DIR/normalization_stats.json \\"
+    echo "    --verify"
     exit 1
 fi
 
 if [ ! -f "$TEST_DATA" ]; then
-    echo "ERROR: Test data not found: $TEST_DATA"
-    echo "Please check data conversion above"
+    echo "ERROR: Normalized test data not found: $TEST_DATA"
+    echo "Please see normalization instructions above"
     exit 1
 fi
 
-echo "✓ Training data exists: $TRAIN_DATA"
-echo "✓ Test data exists: $TEST_DATA"
+if [ ! -f "$NORM_STATS" ]; then
+    echo "ERROR: Normalization statistics not found: $NORM_STATS"
+    echo "Please run normalization with --compute-stats flag"
+    exit 1
+fi
+
+echo "✓ Normalized training data exists: $TRAIN_DATA"
+echo "✓ Normalized test data exists: $TEST_DATA"
+echo "✓ Normalization stats exist: $NORM_STATS"
+echo ""
+
+# Show normalization statistics
+echo "Normalization Statistics:"
+python -c "
+import json
+with open('$NORM_STATS', 'r') as f:
+    stats = json.load(f)
+    print(f\"  State mean: {stats['state_mean'][0]:.1f}, ..., {stats['state_mean'][-1]:.1f}\")
+    print(f\"  State std:  {stats['state_std'][0]:.1f}, ..., {stats['state_std'][-1]:.1f}\")
+    print(f\"  Control mean: {stats['control_mean'][0]:.1f}, ..., {stats['control_mean'][-1]:.1f}\")
+    print(f\"  Control std:  {stats['control_std'][0]:.1f}, ..., {stats['control_std'][-1]:.1f}\")
+"
 echo ""
 
 # Verify data dimensions
-echo "Verifying data dimensions..."
+echo "Verifying normalized data dimensions..."
 python -c "
 import numpy as np
 import sys
@@ -178,6 +215,9 @@ fi
 
 echo ""
 echo "✓ Dataset validation complete!"
+echo ""
+echo "NOTE: Data has been normalized for training (mean=0, std=1)"
+echo "      This is CRITICAL for neural network learning with large-scale values"
 echo ""
 
 # =============================================================================
