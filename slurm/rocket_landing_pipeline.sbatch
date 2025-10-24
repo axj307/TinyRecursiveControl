@@ -308,7 +308,8 @@ python src/evaluation/evaluator.py \
     --test_data "$TEST_DATA" \
     --output "$EVAL_OUTPUT" \
     --batch_size $BATCH_SIZE \
-    --success_threshold $SUCCESS_THRESHOLD
+    --success_threshold $SUCCESS_THRESHOLD \
+    --norm_stats "$NORM_STATS"
 
 EVAL_EXIT_CODE=$?
 
@@ -373,10 +374,24 @@ import torch
 # Load problem instance
 problem = get_problem('$PROBLEM')
 
-# Load test data
+# Load normalization stats
+with open('$NORM_STATS', 'r') as f:
+    norm_stats = json.load(f)
+control_mean = np.array(norm_stats['control_mean'])
+control_std = np.array(norm_stats['control_std'])
+state_mean = np.array(norm_stats['state_mean'])
+state_std = np.array(norm_stats['state_std'])
+print('Loaded normalization statistics')
+
+# Load test data (normalized)
 test_data = np.load('$TEST_DATA')
-initial_states = test_data['state_trajectories'][:, 0, :]  # First state
-final_states = test_data['state_trajectories'][:, -1, :]   # Final state
+initial_states_norm = test_data['state_trajectories'][:, 0, :]  # First state (normalized)
+final_states_norm = test_data['state_trajectories'][:, -1, :]   # Final state (normalized)
+
+# Denormalize states for ground truth
+initial_states = initial_states_norm * state_std + state_mean
+final_states = final_states_norm * state_std + state_mean
+print('Denormalized ground truth states')
 
 # Load TRC predictions
 checkpoint = torch.load('$TRAIN_OUTPUT_DIR/best_model.pt', map_location='cpu')
@@ -397,14 +412,18 @@ target_tensor = torch.tensor(test_data['target_states'], dtype=torch.float32)
 
 with torch.no_grad():
     output = model(initial_tensor, target_tensor)
-    predicted_controls = output['controls'].cpu().numpy()
+    predicted_controls_norm = output['controls'].cpu().numpy()
 
-# Simulate trajectories with TRC controls
+# Denormalize predicted controls before simulation
+predicted_controls = predicted_controls_norm * control_std + control_mean
+print(f'Denormalized predicted controls: range [{predicted_controls.min():.1f}, {predicted_controls.max():.1f}] N')
+
+# Simulate trajectories with TRC controls (using denormalized values!)
 trc_final_states = []
 for i in range(len(initial_tensor)):
-    state = test_data['initial_states'][i]
+    state = initial_states[i]  # Use denormalized initial state
     for t in range($HORIZON):
-        control = predicted_controls[i, t]
+        control = predicted_controls[i, t]  # Use denormalized control
         state = problem.simulate_step(state, control)
     trc_final_states.append(state)
 

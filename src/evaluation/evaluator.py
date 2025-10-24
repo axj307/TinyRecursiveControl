@@ -176,8 +176,10 @@ def evaluate_model(
 
     # Load test data
     data = np.load(test_data_path)
-    initial_states = torch.tensor(data['initial_states'], dtype=torch.float32)
-    target_states = torch.tensor(data['target_states'], dtype=torch.float32)
+    initial_states_data = data['initial_states']
+    target_states_data = data['target_states']
+    initial_states = torch.tensor(initial_states_data, dtype=torch.float32)
+    target_states = torch.tensor(target_states_data, dtype=torch.float32)
 
     if 'control_sequences' in data:
         optimal_controls = torch.tensor(data['control_sequences'], dtype=torch.float32)
@@ -206,7 +208,47 @@ def evaluate_model(
     # Concatenate all predictions
     predicted_controls = torch.cat(all_predicted_controls, dim=0)
 
-    # Evaluate TRC controls
+    # Check if data is normalized and needs denormalization
+    norm_stats_path = args.get('norm_stats') if isinstance(args, dict) else getattr(args, 'norm_stats', None)
+    data_is_normalized = False
+
+    if norm_stats_path and Path(norm_stats_path).exists():
+        logger.info(f"\nLoading normalization statistics from: {norm_stats_path}")
+        with open(norm_stats_path, 'r') as f:
+            norm_stats = json.load(f)
+
+        # Denormalize controls
+        control_mean = np.array(norm_stats['control_mean'])
+        control_std = np.array(norm_stats['control_std'])
+        logger.info("Denormalizing predicted controls...")
+        logger.info(f"  Control mean: {control_mean}")
+        logger.info(f"  Control std: {control_std}")
+        predicted_controls_np = predicted_controls.numpy()
+        predicted_controls_real = predicted_controls_np * control_std + control_mean
+        predicted_controls = torch.from_numpy(predicted_controls_real).float()
+        logger.info(f"  Range before: [{predicted_controls_np.min():.2f}, {predicted_controls_np.max():.2f}]")
+        logger.info(f"  Range after: [{predicted_controls_real.min():.2f}, {predicted_controls_real.max():.2f}] N")
+
+        # Denormalize states
+        state_mean = np.array(norm_stats['state_mean'])
+        state_std = np.array(norm_stats['state_std'])
+        logger.info("Denormalizing states...")
+        initial_states_np = initial_states.numpy()
+        target_states_np = target_states.numpy()
+        initial_states_real = initial_states_np * state_std + state_mean
+        target_states_real = target_states_np * state_std + state_mean
+        initial_states = torch.from_numpy(initial_states_real).float()
+        target_states = torch.from_numpy(target_states_real).float()
+        logger.info(f"  Initial states range: [{initial_states_real.min():.2f}, {initial_states_real.max():.2f}]")
+
+        data_is_normalized = True
+        logger.info("✓ Denormalization complete")
+    else:
+        if norm_stats_path:
+            logger.warning(f"Normalization stats not found: {norm_stats_path}")
+        logger.info("Assuming data is already in real units (not normalized)")
+
+    # Evaluate TRC controls (now in real units)
     logger.info("\nEvaluating TRC controls...")
     trc_metrics = evaluate_controls(
         problem, initial_states, target_states, predicted_controls,
@@ -231,6 +273,13 @@ def evaluate_model(
 
     # Compare with optimal controls if available
     if has_optimal:
+        # Denormalize optimal controls if data was normalized
+        if data_is_normalized:
+            logger.info("\nDenormalizing optimal controls...")
+            optimal_controls_np = optimal_controls.numpy()
+            optimal_controls_real = optimal_controls_np * control_std + control_mean
+            optimal_controls = torch.from_numpy(optimal_controls_real).float()
+
         logger.info("\nEvaluating Optimal controls...")
         optimal_metrics = evaluate_controls(
             problem, initial_states, target_states, optimal_controls,
@@ -297,6 +346,8 @@ def main():
                        help='Error threshold for success rate')
     parser.add_argument('--config_dir', type=str, default='configs',
                        help='Configuration directory')
+    parser.add_argument('--norm_stats', type=str, default=None,
+                       help='Path to normalization statistics JSON file')
 
     args = parser.parse_args()
 
