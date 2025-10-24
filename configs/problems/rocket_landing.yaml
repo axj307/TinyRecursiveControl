@@ -1,0 +1,190 @@
+# Rocket Landing Control Problem Configuration
+#
+# 3DOF point-mass rocket landing with fuel-optimal control.
+# Based on aerospace-datasets with 4,812 optimal landing trajectories.
+#
+# State: [x, y, z, vx, vy, vz, m] (position, velocity, mass)
+# Control: [Tx, Ty, Tz] (3D thrust vector)
+# Dynamics: Newtonian mechanics with gravity and variable mass
+
+# =============================================================================
+# Problem Identification
+# =============================================================================
+problem:
+  name: "rocket_landing"
+  type: "nonlinear"
+  description: "3DOF rocket landing with fuel-optimal trajectory control"
+
+# =============================================================================
+# Dynamics Parameters
+# =============================================================================
+dynamics:
+  # Time discretization
+  dt: 0.5           # Time step (0.5s for rocket landing)
+  horizon: 50       # Control horizon (number of steps)
+  total_time: 25.0  # Total time horizon (dt * horizon = 25.0s)
+
+  # Rocket physical parameters
+  Isp: 300.0        # Specific impulse (seconds) - typical for rocket engines
+                    # Higher Isp = more fuel-efficient (300-450 typical)
+
+# =============================================================================
+# State and Control Bounds
+# =============================================================================
+bounds:
+  # State space bounds: [x, y, z, vx, vy, vz, m]
+  # Based on aerospace-datasets statistics, expanded for safety
+  state:
+    lower: [-5000.0, -10000.0, 0.0, -200.0, -200.0, -200.0, 500.0]
+    upper: [10000.0, 10000.0, 6000.0, 200.0, 200.0, 200.0, 4000.0]
+    # x, y: Horizontal position (m)
+    # z: Altitude (m) - must be >= 0 (ground level)
+    # vx, vy, vz: Velocity components (m/s)
+    # m: Rocket mass (kg) - includes fuel
+
+  # Control input bounds: [Tx, Ty, Tz]
+  # Each thrust component can range to allow full 3D thrust vectoring
+  # Max thrust magnitude ~13,000 N based on dataset
+  control:
+    lower: [-15000.0, -15000.0, -15000.0]
+    upper: [15000.0, 15000.0, 15000.0]
+
+  # Initial state sampling bounds
+  # Based on dataset statistics:
+  # - Position: X: [-2342.5, 8784.9], Y: [-7608.2, 5346.2], Z: [6.5, 5795.8]
+  # - Velocity: [3.1, 138.4] m/s magnitude
+  # - Mass: [1576.4, 3804.6] kg
+  initial_state:
+    lower: [-2500.0, -8000.0, 500.0, -100.0, -100.0, -100.0, 1500.0]
+    upper: [9000.0, 5500.0, 6000.0, 100.0, 100.0, 100.0, 3900.0]
+
+# =============================================================================
+# LQR Cost Parameters
+# =============================================================================
+lqr:
+  # State cost matrix Q (penalizes deviation from landing target)
+  # Q = diag([q_x, q_y, q_z, q_vx, q_vy, q_vz, q_m])
+  # Emphasize position (especially altitude) and velocity at landing
+  Q_matrix: [[10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+             [0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+             [0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 0.0],
+             [0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0],
+             [0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0],
+             [0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0],
+             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]]
+
+  # Control cost R (penalizes fuel consumption)
+  # Small value encourages fuel efficiency
+  R_value: 0.001
+
+  # Terminal cost multiplier (Q_terminal = Q_terminal_multiplier * Q)
+  # Strong terminal cost ensures accurate landing
+  Q_terminal_multiplier: 50.0
+
+  # Mass/fuel cost weight
+  # Penalize fuel consumption (mass_initial - mass_final)
+  mass_weight: 1.0
+
+# =============================================================================
+# Data Generation Settings
+# =============================================================================
+data:
+  # Dataset sizes
+  num_train_samples: 4000   # Use subset of aerospace-datasets (4812 available)
+  num_test_samples: 500
+
+  # Data source
+  # For rocket landing, we can either:
+  # 1. Load from aerospace-datasets HDF5 file
+  # 2. Generate using LQR controller
+  data_source: "aerospace_datasets"  # or "lqr" for synthetic generation
+
+  # Path to aerospace-datasets
+  aerospace_datasets_path: "aerospace-datasets/rocket-landing/data/new_3dof_rocket_landing_with_mass.h5"
+
+  # Controller type for optimal trajectory generation (if generating data)
+  controller: "lqr"
+
+  # Target state for control
+  # LANDING TASK: Land at origin with zero velocity
+  # State: [x=0, y=0, z=0, vx=0, vy=0, vz=0, m=any]
+  target_state: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2000.0]
+
+  # Random seeds
+  train_seed: 42
+  test_seed: 123
+
+  # Sampling strategy
+  sampling:
+    method: "uniform"  # "uniform" or "gaussian"
+
+# =============================================================================
+# Training-Specific Settings
+# =============================================================================
+training:
+  # Normalization (recommended for high-dimensional problems)
+  normalize_states: true
+  normalize_controls: true
+
+  # Augmentation (optional)
+  augmentation:
+    enabled: false
+    add_noise: false
+    noise_std: 0.1
+
+# =============================================================================
+# Evaluation Settings
+# =============================================================================
+evaluation:
+  # Landing success criteria
+  # Based on aerospace-datasets: all trajectories achieve < 10⁻⁶ m error
+  landing_criteria:
+    position_threshold: 10.0      # Max horizontal error (m)
+    velocity_threshold: 5.0       # Max landing velocity (m/s)
+    altitude_threshold: 1.0       # Max altitude at landing (m)
+
+  # Success threshold (for computing success rate)
+  success_threshold: 15.0  # Combined position+velocity error
+
+  # Metrics to compute
+  metrics:
+    - "position_error"
+    - "velocity_error"
+    - "landing_accuracy"
+    - "fuel_consumption"
+    - "landing_time"
+    - "control_cost"
+    - "success_rate"
+    - "soft_landing_rate"
+
+# =============================================================================
+# Notes
+# =============================================================================
+notes: |
+  Rocket Landing Configuration - LANDING TASK
+
+  Based on the aerospace-datasets 3DOF rocket landing dataset containing
+  4,812 optimal fuel-efficient landing trajectories.
+
+  PROBLEM CHARACTERISTICS:
+  - 7D state space: position (x,y,z), velocity (vx,vy,vz), mass (m)
+  - 3D control: thrust vector (Tx, Ty, Tz)
+  - Time-varying dynamics due to fuel consumption (mass decreases)
+  - Nonlinear gravity and thrust dynamics
+
+  CONTROL TASK: Precision landing at origin
+  - Target: Land at (0, 0, 0) with zero velocity
+  - Initial conditions: Distributed across wide range (dataset statistics)
+  - Objective: Minimize fuel consumption while achieving soft landing
+  - Constraints: Altitude >= 0, mass >= empty mass
+
+  DATASET STATISTICS (aerospace-datasets):
+  - 4,812 trajectories, 50 time steps each
+  - Landing accuracy: < 10⁻⁶ m (near-perfect)
+  - Landing times: 11-256 seconds
+  - Fuel consumption: 44.7-1406.1 kg
+  - Initial velocity: 3.1-138.4 m/s
+  - Initial mass: 1576.4-3804.6 kg
+
+  This is a HIGH-DIMENSIONAL control problem compared to existing
+  2D problems (double integrator, pendulum, Van der Pol).

@@ -165,7 +165,7 @@ class BaseControlProblem(ABC):
             "Only linear systems can provide A and B matrices."
         )
 
-    def sample_initial_state(self, rng: np.random.Generator) -> np.ndarray:
+    def sample_initial_state(self, rng) -> np.ndarray:
         """
         Sample random initial state within bounds.
 
