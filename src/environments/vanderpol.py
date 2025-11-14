@@ -45,6 +45,7 @@ class VanderpolOscillator(BaseControlProblem):
         horizon: int = 100,
         mu_base: float = 1.0,
         initial_state_bounds: Tuple = None,
+        control_bounds: float = None,
         Q: np.ndarray = None,
         R: float = 0.5,
     ):
@@ -57,6 +58,8 @@ class VanderpolOscillator(BaseControlProblem):
             mu_base: Van der Pol damping parameter (default: 1.0)
             initial_state_bounds: Tuple of (lower, upper) arrays for initial state sampling
                                   If None, defaults to [-2.0, -2.0] to [2.0, 2.0]
+            control_bounds: Maximum absolute control value (symmetric bounds ±control_bounds)
+                           If None, defaults to ±2.0
             Q: State cost matrix [2, 2] (default: diag([10.0, 5.0]))
             R: Control cost scalar (default: 0.5)
         """
@@ -67,6 +70,9 @@ class VanderpolOscillator(BaseControlProblem):
 
         # Store initial state bounds
         self._initial_state_bounds = initial_state_bounds
+
+        # Store control bounds
+        self._control_bounds = control_bounds
 
         # LQR cost parameters
         if Q is None:
@@ -109,8 +115,15 @@ class VanderpolOscillator(BaseControlProblem):
 
         Control is an external forcing term.
         """
-        lower = np.array([-2.0])
-        upper = np.array([2.0])
+        # Use explicitly provided bounds if available
+        if self._control_bounds is not None:
+            max_control = self._control_bounds
+            lower = np.array([-max_control])
+            upper = np.array([max_control])
+        else:
+            # Default: ±2.0
+            lower = np.array([-2.0])
+            upper = np.array([2.0])
         return lower, upper
 
     def get_initial_state_bounds(self) -> Tuple[np.ndarray, np.ndarray]:

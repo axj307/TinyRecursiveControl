@@ -38,8 +38,8 @@ bounds:
 
   # Control input bounds: [acceleration]
   control:
-    lower: [-8.0]   # [m/s^2] - increased from 4.0 to reduce saturation
-    upper: [8.0]    # [m/s^2]
+    lower: [-4.0]   # [m/s^2]
+    upper: [4.0]    # [m/s^2]
 
   # Initial state sampling bounds (typically smaller than full state space)
   # UPDATED: Reduced to ±2.0 to match main worktree (was ±5.0)
@@ -68,7 +68,8 @@ lqr:
 # =============================================================================
 data:
   # Dataset sizes
-  num_train_samples: 10000
+  # UPDATED: Reduced from 10000 to 1000 for data efficiency comparison
+  num_train_samples: 1000
   num_test_samples: 1000
 
   # Controller type for optimal trajectory generation
@@ -125,8 +126,8 @@ notes: |
   Default configuration for double integrator problem.
 
   This configuration produces datasets suitable for training
-  TinyRecursiveControl models. The control bounds have been increased
-  to 8.0 to reduce control saturation during trajectory generation.
+  TinyRecursiveControl models. The control bounds are set to ±4.0
+  for standard control authority.
 
   The minimum-energy controller typically produces smoother trajectories
   with lower terminal error compared to standard LQR.

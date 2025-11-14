@@ -152,6 +152,7 @@ def evaluate_model(
     device: str = 'cpu',
     batch_size: int = 64,
     success_threshold: float = 0.1,
+    norm_stats_path: Optional[str] = None,
 ) -> Dict:
     """
     Evaluate model on test set using problem-specific dynamics.
@@ -163,6 +164,7 @@ def evaluate_model(
         device: Device to run on
         batch_size: Batch size for evaluation
         success_threshold: Error threshold for success rate
+        norm_stats_path: Optional path to normalization statistics JSON file
 
     Returns:
         Dictionary with evaluation metrics
@@ -209,7 +211,6 @@ def evaluate_model(
     predicted_controls = torch.cat(all_predicted_controls, dim=0)
 
     # Check if data is normalized and needs denormalization
-    norm_stats_path = args.get('norm_stats') if isinstance(args, dict) else getattr(args, 'norm_stats', None)
     data_is_normalized = False
 
     if norm_stats_path and Path(norm_stats_path).exists():
@@ -416,6 +417,7 @@ def main():
         device=device,
         batch_size=args.batch_size,
         success_threshold=args.success_threshold,
+        norm_stats_path=args.norm_stats,
     )
 
     # Save results

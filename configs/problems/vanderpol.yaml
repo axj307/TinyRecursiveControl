@@ -38,7 +38,8 @@ bounds:
     upper: [5.0, 5.0]
 
   # Control input bounds: [external_forcing]
-  # External forcing term to influence the oscillator
+  # Standard ±2.0 bounds for Van der Pol control
+  # This provides adequate control for suppressing nonlinear oscillations
   control:
     lower: [-2.0]
     upper: [2.0]
@@ -60,7 +61,9 @@ lqr:
   Q_matrix: [[10.0, 0.0], [0.0, 5.0]]
 
   # Control cost R (penalizes control effort)
-  R_value: 0.5
+  # UPDATED: Decreased from 0.5 to 0.1 to match Double Integrator
+  # Lower penalty allows controller to use stronger controls when needed
+  R_value: 0.1
 
   # Terminal cost multiplier (Q_terminal = Q_terminal_multiplier * Q)
   Q_terminal_multiplier: 20.0
@@ -70,7 +73,8 @@ lqr:
 # =============================================================================
 data:
   # Dataset sizes
-  num_train_samples: 10000
+  # UPDATED: Reduced from 10000 to 1000 for fair comparison with Double Integrator
+  num_train_samples: 1000
   num_test_samples: 1000
 
   # Controller type for optimal trajectory generation
@@ -127,7 +131,7 @@ evaluation:
 # Notes
 # =============================================================================
 notes: |
-  Van der Pol oscillator configuration - REGULATION TASK.
+  Van der Pol oscillator configuration - UPDATED FOR FAIR COMPARISON.
 
   The Van der Pol oscillator exhibits self-sustained oscillations (limit cycle)
   for μ > 0. The nonlinear damping term creates:
@@ -138,10 +142,13 @@ notes: |
   - All trajectories target the origin [0, 0]
   - Initial states sampled from [-2.0, 2.0] × [-2.0, 2.0]
   - LQR controller linearizes around origin for optimal feedback
-  - Achieves 99.8% convergence across full state space
 
-  This configuration is optimized for:
-  1. Maximum training diversity (16× state space vs ±0.5 bounds)
-  2. Full Van der Pol dynamics (covers limit cycle region)
-  3. High-quality training data (near-perfect convergence)
-  4. Rich nonlinear control behaviors for neural network learning
+  UPDATED CONFIGURATION (for comparison with Double Integrator):
+  - Control bounds: ±2.0 (standard Van der Pol control authority)
+  - Control cost R: 0.5 → 0.1 (5x decrease, matches Double Integrator)
+  - Training samples: 10000 → 1000 (10x reduction for data efficiency test)
+
+  These changes provide:
+  1. Standard control authority (±2.0) for Van der Pol oscillator
+  2. Fair data efficiency comparison (both use 1000 samples)
+  3. Consistent control cost penalty with Double Integrator

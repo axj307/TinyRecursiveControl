@@ -407,7 +407,7 @@ class TinyRecursiveControl(nn.Module):
 
     # Two-level architecture factory methods
     @classmethod
-    def create_two_level_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_two_level_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """Create a small two-level model (~150K parameters)."""
         config = TRCConfig(
             state_dim=state_dim,
@@ -421,11 +421,12 @@ class TinyRecursiveControl(nn.Module):
             L_cycles=4,
             L_layers=2,
             use_gradient_truncation=True,
+            control_bounds=control_bounds,
         )
         return cls(config)
 
     @classmethod
-    def create_two_level_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_two_level_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """Create a medium two-level model (~600K parameters)."""
         config = TRCConfig(
             state_dim=state_dim,
@@ -439,11 +440,12 @@ class TinyRecursiveControl(nn.Module):
             L_cycles=4,
             L_layers=2,
             use_gradient_truncation=True,
+            control_bounds=control_bounds,
         )
         return cls(config)
 
     @classmethod
-    def create_two_level_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_two_level_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """Create a large two-level model (~1.5M parameters)."""
         config = TRCConfig(
             state_dim=state_dim,
@@ -457,12 +459,13 @@ class TinyRecursiveControl(nn.Module):
             L_cycles=6,
             L_layers=3,
             use_gradient_truncation=True,
+            control_bounds=control_bounds,
         )
         return cls(config)
 
     # TRM-style architecture factory methods (with SwiGLU, RMSNorm, Post-norm)
     @classmethod
-    def create_trm_style_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_trm_style_small(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """
         Create a small TRM-style model (~200K parameters).
 
@@ -490,11 +493,12 @@ class TinyRecursiveControl(nn.Module):
             norm_type="rmsnorm",
             norm_position="post",
             expansion=4.0,  # TRM uses 4.0 (vs TRC default 2.0)
+            control_bounds=control_bounds,
         )
         return cls(config)
 
     @classmethod
-    def create_trm_style_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_trm_style_medium(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """
         Create a medium TRM-style model (~800K parameters).
 
@@ -517,11 +521,12 @@ class TinyRecursiveControl(nn.Module):
             norm_type="rmsnorm",
             norm_position="post",
             expansion=4.0,
+            control_bounds=control_bounds,
         )
         return cls(config)
 
     @classmethod
-    def create_trm_style_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15):
+    def create_trm_style_large(cls, state_dim: int = 2, control_dim: int = 1, control_horizon: int = 15, control_bounds: float = 4.0):
         """
         Create a large TRM-style model (~2M parameters).
 
@@ -544,5 +549,6 @@ class TinyRecursiveControl(nn.Module):
             norm_type="rmsnorm",
             norm_position="post",
             expansion=4.0,
+            control_bounds=control_bounds,
         )
         return cls(config)

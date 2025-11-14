@@ -212,6 +212,7 @@ def main():
     if "control" in bounds_cfg:
         # For double integrator, this becomes control_bounds
         # For pendulum, this becomes max_torque
+        # For vanderpol, this becomes control_bounds
         # We need problem-specific handling here
         control_lower = bounds_cfg["control"].get("lower", [])
         control_upper = bounds_cfg["control"].get("upper", [])
@@ -222,6 +223,8 @@ def main():
                 problem_kwargs["control_bounds"] = max_control
             elif args.problem == "pendulum":
                 problem_kwargs["max_torque"] = max_control
+            elif args.problem == "vanderpol":
+                problem_kwargs["control_bounds"] = max_control
 
     # Get initial_state bounds if specified (for data generation)
     if "initial_state" in bounds_cfg:

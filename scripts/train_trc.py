@@ -75,17 +75,18 @@ def load_dataset(data_path, eval_data_path=None, batch_size=64):
     return train_loader, eval_loader
 
 
-def create_model(model_type, state_dim, control_dim, horizon, custom_config_json=None):
+def create_model(model_type, state_dim, control_dim, horizon, control_bounds=4.0, custom_config_json=None):
     """
     Create model from factory method or custom config.
 
-    **UPDATED**: Now accepts problem dimensions as parameters.
+    **UPDATED**: Now accepts problem dimensions and control bounds as parameters.
 
     Args:
         model_type: Model type string
         state_dim: State dimension
         control_dim: Control dimension
         horizon: Control horizon
+        control_bounds: Maximum absolute control value (±control_bounds)
         custom_config_json: Custom config JSON (optional)
 
     Returns:
@@ -106,7 +107,8 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
         model = TinyRecursiveControl.create_two_level_medium(
             state_dim=state_dim,
             control_dim=control_dim,
-            control_horizon=horizon
+            control_horizon=horizon,
+            control_bounds=control_bounds
         )
 
     elif model_type == 'trm_style_small':
@@ -114,7 +116,8 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
         model = TinyRecursiveControl.create_trm_style_small(
             state_dim=state_dim,
             control_dim=control_dim,
-            control_horizon=horizon
+            control_horizon=horizon,
+            control_bounds=control_bounds
         )
 
     elif model_type == 'trm_style_medium':
@@ -122,7 +125,8 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
         model = TinyRecursiveControl.create_trm_style_medium(
             state_dim=state_dim,
             control_dim=control_dim,
-            control_horizon=horizon
+            control_horizon=horizon,
+            control_bounds=control_bounds
         )
 
     elif model_type == 'trm_style_large':
@@ -130,7 +134,8 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
         model = TinyRecursiveControl.create_trm_style_large(
             state_dim=state_dim,
             control_dim=control_dim,
-            control_horizon=horizon
+            control_horizon=horizon,
+            control_bounds=control_bounds
         )
 
     else:
@@ -157,13 +162,15 @@ def create_model(model_type, state_dim, control_dim, horizon, custom_config_json
             model = TinyRecursiveControl.create_two_level_small(
                 state_dim=state_dim,
                 control_dim=control_dim,
-                control_horizon=horizon
+                control_horizon=horizon,
+                control_bounds=control_bounds
             )
         elif model_type == 'two_level_large':
             model = TinyRecursiveControl.create_two_level_large(
                 state_dim=state_dim,
                 control_dim=control_dim,
-                control_horizon=horizon
+                control_horizon=horizon,
+                control_bounds=control_bounds
             )
         else:
             raise ValueError(f"Unknown model_type: {model_type}")
@@ -425,12 +432,24 @@ def main():
                 args.state_dim = 2  # Default
 
         if args.control_dim is None:
-            control_bounds = problem_cfg.get("bounds", {}).get("control", {})
-            if "lower" in control_bounds:
-                args.control_dim = len(control_bounds["lower"])
+            control_bounds_cfg = problem_cfg.get("bounds", {}).get("control", {})
+            if "lower" in control_bounds_cfg:
+                args.control_dim = len(control_bounds_cfg["lower"])
             else:
                 print("Warning: Could not infer control_dim from config. Please specify --control_dim")
                 args.control_dim = 1  # Default
+
+        # Extract control bounds (max absolute value)
+        control_bounds_cfg = problem_cfg.get("bounds", {}).get("control", {})
+        if "lower" in control_bounds_cfg and "upper" in control_bounds_cfg:
+            # Assume symmetric bounds, take max absolute value
+            control_bounds_value = max(
+                abs(control_bounds_cfg["lower"][0]),
+                abs(control_bounds_cfg["upper"][0])
+            )
+        else:
+            print("Warning: Could not infer control_bounds from config. Using default 4.0")
+            control_bounds_value = 4.0
 
         if args.horizon is None:
             args.horizon = problem_cfg.get("dynamics", {}).get("horizon", 15)
@@ -448,11 +467,13 @@ def main():
         print(f"  Name: {args.problem}")
         print(f"  State dim: {args.state_dim}")
         print(f"  Control dim: {args.control_dim}")
+        print(f"  Control bounds: ±{control_bounds_value}")
         print(f"  Horizon: {args.horizon}")
         print()
     else:
         # Backward compatibility: infer from dataset or use defaults
         print("No --problem specified. Will infer dimensions from dataset.")
+        control_bounds_value = 4.0  # Default
         if args.state_dim is None:
             args.state_dim = 2  # Default for double integrator
         if args.control_dim is None:
@@ -480,6 +501,7 @@ def main():
         state_dim=args.state_dim,
         control_dim=args.control_dim,
         horizon=args.horizon,
+        control_bounds=control_bounds_value,
         custom_config_json=args.custom_config_json
     )
 

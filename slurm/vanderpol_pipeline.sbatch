@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h100:1                 # Request 1 H100 GPU
 
 echo "========================================================================"
 echo "TinyRecursiveControl - Van der Pol Oscillator Pipeline"
@@ -65,7 +65,7 @@ echo ""
 
 # Problem Configuration
 PROBLEM="vanderpol"
-NUM_TRAIN_SAMPLES=10000
+NUM_TRAIN_SAMPLES=1000
 NUM_TEST_SAMPLES=1000
 
 # Training Configuration
