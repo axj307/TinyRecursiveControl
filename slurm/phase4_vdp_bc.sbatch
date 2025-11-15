@@ -110,8 +110,7 @@ python scripts/train_trc.py \
     --batch_size "${BATCH_SIZE}" \
     --learning_rate "${LEARNING_RATE}" \
     --output_dir "${OUTPUT_DIR}/training" \
-    --save_best_only \
-    --scheduler cosine
+    --save_best_only
 
 TRAIN_EXIT_CODE=$?
 echo "Training exit code: ${TRAIN_EXIT_CODE}"
