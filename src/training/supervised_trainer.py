@@ -22,7 +22,6 @@ from src.training.utils import ModelCheckpoint, EarlyStopping, TrainingStats, ge
 from src.environments.torch_dynamics import (
     simulate_double_integrator_torch,
     simulate_vanderpol_torch,
-    simulate_pendulum_torch,
     simulate_rocket_landing_torch
 )
 
@@ -329,12 +328,6 @@ def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0
                 elif problem_name == 'DoubleIntegrator':
                     states_pred = simulate_double_integrator_torch(
                         initial, controls_pred, dt=problem.dt
-                    )
-                elif problem_name == 'Pendulum':
-                    states_pred = simulate_pendulum_torch(
-                        initial, controls_pred,
-                        m=problem.m, l=problem.l, g=problem.g, b=problem.b,
-                        I=problem.I, dt=problem.dt
                     )
                 elif problem_name == 'RocketLanding':
                     states_pred = simulate_rocket_landing_torch(

@@ -337,6 +337,5 @@ __all__ = [
     'soft_clamp',
     'simulate_double_integrator_torch',
     'simulate_vanderpol_torch',
-    'simulate_pendulum_torch',
     'simulate_rocket_landing_torch',
 ]

@@ -57,6 +57,10 @@ from src.training.supervised_trainer import (
     simulate_vanderpol_torch,
 )
 from src.environments import get_problem
+from src.environments.torch_dynamics import (
+    simulate_double_integrator_torch,
+    simulate_vanderpol_torch as simulate_vdp_torch,
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -74,10 +78,20 @@ def create_dynamics_function(problem):
     """
     problem_name = problem.__class__.__name__
 
-    if problem_name == "VanderpolOscillator":
-        # Use differentiable PyTorch simulator
+    if problem_name == "DoubleIntegrator":
+        # Use differentiable PyTorch simulator for double integrator
         def dynamics_fn(initial_state, controls):
-            return simulate_vanderpol_torch(
+            return simulate_double_integrator_torch(
+                initial_state=initial_state,
+                controls=controls,
+                dt=problem.dt,
+            )
+        return dynamics_fn
+
+    elif problem_name == "VanderpolOscillator":
+        # Use differentiable PyTorch simulator for Van der Pol
+        def dynamics_fn(initial_state, controls):
+            return simulate_vdp_torch(
                 initial_state=initial_state,
                 controls=controls,
                 mu=problem.mu,
@@ -87,11 +101,10 @@ def create_dynamics_function(problem):
 
     else:
         # For other problems, would need to implement differentiable simulators
-        # For now, raise an error
         raise NotImplementedError(
             f"Process supervision requires differentiable dynamics. "
             f"Problem '{problem_name}' doesn't have a differentiable simulator yet. "
-            f"Currently supported: VanderpolOscillator"
+            f"Currently supported: DoubleIntegrator, VanderpolOscillator"
         )
 
 
