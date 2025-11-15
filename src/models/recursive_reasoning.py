@@ -9,7 +9,7 @@ multiple improvement cycles.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Union, List
 from dataclasses import dataclass
 
 # Import TRM-style layers
@@ -457,7 +457,8 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
         current_controls: torch.Tensor,      # [batch, horizon, control_dim]
         trajectory_error: Optional[torch.Tensor] = None,  # [batch, state_dim]
         H_step: int = 0,                     # Current H_cycle (for gradient truncation)
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return_all_z_L: bool = False,        # Return z_L states from L_cycles
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]]:
         """
         Perform one H_cycle of two-level reasoning.
 
@@ -466,9 +467,11 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
             current_controls: Current control sequence
             trajectory_error: Error from simulating current controls
             H_step: Current H_cycle index (0 to H_cycles-1)
+            return_all_z_L: If True, return list of z_L states from L_cycles
 
         Returns:
-            (z_H, z_L): Updated high-level and low-level latent states
+            If return_all_z_L=False: (z_H, z_L)
+            If return_all_z_L=True: (z_H, z_L, z_L_states_list)
         """
         batch_size = z_initial.shape[0]
         device = z_initial.device
@@ -496,12 +499,19 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
         else:
             ctx = torch.enable_grad()
 
+        # Initialize z_L tracking if requested
+        z_L_states = [] if return_all_z_L else None
+
         with ctx:
             # Low-level reasoning (L_cycles iterations)
             for _ in range(self.L_cycles):
                 # Input injection: z_H (strategic guidance) + z_initial (problem) + control_context
                 low_level_input = z_H + z_initial + control_context
                 z_L = self.L_level(z_L, low_level_input)
+
+                # Track z_L state after each L_cycle if requested
+                if return_all_z_L:
+                    z_L_states.append(z_L.clone())
 
             # High-level reasoning (1 iteration)
             # Input injection: z_L (execution details)
@@ -515,4 +525,7 @@ class TwoLevelRecursiveRefinementModule(nn.Module):
             self._z_H = z_H
             self._z_L = z_L
 
-        return z_H, z_L
+        if return_all_z_L:
+            return z_H, z_L, z_L_states
+        else:
+            return z_H, z_L

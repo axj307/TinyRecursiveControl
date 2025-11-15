@@ -115,12 +115,20 @@ def evaluate_controls(
 
 
 def load_model(checkpoint_path: str, device: str = 'cpu'):
-    """Load trained model from checkpoint."""
+    """Load trained model from checkpoint with architecture detection."""
     logger.info(f"Loading model from {checkpoint_path}")
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    # Load config from checkpoint's directory
+    # Extract state dict
+    if 'model_state_dict' in checkpoint:
+        state_dict = checkpoint['model_state_dict']
+    elif 'model' in checkpoint:
+        state_dict = checkpoint['model']
+    else:
+        state_dict = checkpoint
+
+    # Try loading config from checkpoint's directory first
     checkpoint_dir = Path(checkpoint_path).parent
     config_path = checkpoint_dir / 'config.json'
 
@@ -132,11 +140,57 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
         model = TinyRecursiveControl(config)
         logger.info(f"✓ Model created from config (two_level={config.use_two_level})")
     else:
-        # Fallback for old checkpoints
-        logger.warning("No config.json found, using default medium model")
-        model = TinyRecursiveControl.create_medium()
+        # Fallback: Infer architecture from state dict
+        logger.warning("No config.json found, inferring architecture from checkpoint...")
 
-    model.load_state_dict(checkpoint['model_state_dict'])
+        # Detect architecture type (two-level vs single-latent)
+        is_two_level = 'recursive_reasoning.H_init' in state_dict or 'recursive_reasoning.L_init' in state_dict
+
+        # Infer dimensions from actual keys in checkpoint
+        # State encoder structure: encoder.0 (input) -> ... -> encoder.3 (output to latent)
+        if 'state_encoder.encoder.3.weight' in state_dict:
+            latent_dim = state_dict['state_encoder.encoder.3.weight'].shape[0]
+        elif 'state_encoder.out_projection.weight' in state_dict:
+            latent_dim = state_dict['state_encoder.out_projection.weight'].shape[0]
+        else:
+            latent_dim = 128  # Default
+
+        # Infer state_dim from state encoder input
+        # Input is [current_state, target_state, time_remaining?] = state_dim * 2 + extras
+        if 'state_encoder.encoder.0.weight' in state_dict:
+            input_size = state_dict['state_encoder.encoder.0.weight'].shape[1]
+            state_dim = (input_size - 1) // 2  # Subtract 1 for time, divide by 2 for current+target
+        else:
+            state_dim = 2  # Default
+
+        control_dim = 1  # Assume 1D control
+
+        # Infer horizon from decoder output size
+        if 'control_decoder.decoder.3.bias' in state_dict:
+            horizon = state_dict['control_decoder.decoder.3.bias'].shape[0]
+        elif 'initial_control_generator.decoder.3.bias' in state_dict:
+            horizon = state_dict['initial_control_generator.decoder.3.bias'].shape[0]
+        else:
+            horizon = 100  # Default fallback
+
+        logger.info(f"  Detected: {'Two-level' if is_two_level else 'Single-latent'} architecture")
+        logger.info(f"  Dimensions: state={state_dim}, latent={latent_dim}, horizon={horizon}")
+
+        # Create matching model
+        if is_two_level:
+            model = TinyRecursiveControl.create_two_level_medium(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+        else:
+            model = TinyRecursiveControl.create_medium(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+
+    model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
 
@@ -209,7 +263,8 @@ def evaluate_model(
     predicted_controls = torch.cat(all_predicted_controls, dim=0)
 
     # Check if data is normalized and needs denormalization
-    norm_stats_path = args.get('norm_stats') if isinstance(args, dict) else getattr(args, 'norm_stats', None)
+    # TODO: Add norm_stats_path as parameter if normalization is needed
+    norm_stats_path = None  # Fixed: args is not defined in this scope
     data_is_normalized = False
 
     if norm_stats_path and Path(norm_stats_path).exists():

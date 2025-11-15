@@ -222,6 +222,9 @@ class TinyRecursiveControl(nn.Module):
             # Reset internal state at the beginning
             self.recursive_reasoning._reset_state()
 
+            # Initialize z_L tracking for hierarchical analysis
+            all_z_L_by_H_cycle = [] if return_all_iterations else None
+
             for k in range(self.config.H_cycles):
                 # 3a. Simulate trajectory (if dynamics provided)
                 trajectory_error = None
@@ -234,13 +237,21 @@ class TinyRecursiveControl(nn.Module):
                     )
                     all_errors.append(trajectory_error)
 
-                # 3b. Two-level reasoning (returns z_H, z_L)
-                z_H, z_L = self.recursive_reasoning(
+                # 3b. Two-level reasoning (returns z_H, z_L, [z_L_states])
+                reasoning_output = self.recursive_reasoning(
                     z_initial=z_initial,
                     current_controls=current_controls,
                     trajectory_error=trajectory_error,
                     H_step=k,
+                    return_all_z_L=return_all_iterations,
                 )
+
+                # Handle optional z_L tracking
+                if return_all_iterations:
+                    z_H, z_L, z_L_states = reasoning_output
+                    all_z_L_by_H_cycle.append(z_L_states)
+                else:
+                    z_H, z_L = reasoning_output
 
                 # 3c. Generate improved controls from z_H (high-level makes strategic decisions)
                 if self.config.use_residual_decoder:
@@ -318,6 +329,15 @@ class TinyRecursiveControl(nn.Module):
         if return_all_iterations:
             output['all_controls'] = torch.stack(all_controls, dim=1)  # [batch, iters+1, horizon, ctrl]
             output['all_latents'] = torch.stack(all_latents, dim=1)     # [batch, iters+1, latent]
+
+            # Add hierarchical analysis data for two-level architecture
+            if self.config.use_two_level and all_z_L_by_H_cycle is not None:
+                # Stack z_L states into 4D tensor: [batch, H_cycles, L_cycles, latent_dim]
+                output['all_z_H_states'] = output['all_latents']  # Alias for clarity
+                output['all_z_L_states'] = torch.stack([
+                    torch.stack(z_L_list, dim=1) for z_L_list in all_z_L_by_H_cycle
+                ], dim=1)
+                output['final_z_L'] = z_L  # Final low-level state
 
         if all_errors:
             output['errors'] = torch.stack(all_errors, dim=1)  # [batch, iters, state_dim]

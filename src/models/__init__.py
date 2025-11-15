@@ -13,6 +13,7 @@ from .recursive_reasoning import (
     ControlReasoningModule,
 )
 from .tiny_recursive_control import TinyRecursiveControl, TRCConfig
+from .value_predictor import ValuePredictor, IterationValuePredictor, create_value_predictor
 
 __all__ = [
     # Encoders
@@ -34,4 +35,8 @@ __all__ = [
     # Main model
     'TinyRecursiveControl',
     'TRCConfig',
+    # Value prediction
+    'ValuePredictor',
+    'IterationValuePredictor',
+    'create_value_predictor',
 ]

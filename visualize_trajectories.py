@@ -53,7 +53,7 @@ def simulate_trajectory(problem, initial_state, controls):
 
 
 def load_model(checkpoint_path: str, device: str = 'cpu'):
-    """Load trained TRC model."""
+    """Load trained TRC model with architecture detection."""
     print(f"Loading model from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
@@ -69,9 +69,54 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
         model = TinyRecursiveControl(config)
         print(f"✓ Model created from config (two_level={config.use_two_level})")
     else:
-        # Fallback for old checkpoints
-        print("WARNING: No config.json found, using default medium model")
-        model = TinyRecursiveControl.create_medium()
+        # Detect architecture from checkpoint
+        print("No config.json found, detecting architecture from checkpoint...")
+        state_dict = checkpoint['model_state_dict']
+
+        # Check if this is a two-level model
+        is_two_level = 'recursive_reasoning.H_init' in state_dict
+
+        # Infer dimensions from checkpoint keys
+        latent_dim = 128  # default
+        state_dim = 2  # default
+        control_horizon = 100  # default
+
+        # Try to infer from actual keys
+        if 'state_encoder.encoder.3.weight' in state_dict:
+            latent_dim = state_dict['state_encoder.encoder.3.weight'].shape[0]
+        if 'state_encoder.encoder.0.weight' in state_dict:
+            input_size = state_dict['state_encoder.encoder.0.weight'].shape[1]
+            state_dim = (input_size - 1) // 2
+        if 'control_decoder.decoder.3.bias' in state_dict:
+            control_horizon = state_dict['control_decoder.decoder.3.bias'].shape[0]
+
+        print(f"  Architecture: {'Two-level' if is_two_level else 'Single-latent'}")
+        print(f"  Dimensions: state={state_dim}, latent={latent_dim}, control_horizon={control_horizon}")
+
+        if is_two_level:
+            # Create two-level model
+            config = TRCConfig(
+                state_dim=state_dim,
+                control_dim=1,
+                latent_dim=latent_dim,
+                control_horizon=control_horizon,
+                use_two_level=True,
+                H_cycles=3,
+                L_cycles=4,
+            )
+        else:
+            # Create single-latent model
+            config = TRCConfig(
+                state_dim=state_dim,
+                control_dim=1,
+                latent_dim=latent_dim,
+                control_horizon=control_horizon,
+                use_two_level=False,
+                num_reasoning_blocks=3,
+            )
+
+        model = TinyRecursiveControl(config)
+        print("✓ Model created with detected architecture")
 
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)

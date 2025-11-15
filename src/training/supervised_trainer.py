@@ -612,5 +612,397 @@ def main():
     logger.info(f"  2. View training curves: {args.output_dir}/training_curves.png")
 
 
+def train_epoch_process_supervision(
+    model,
+    train_loader,
+    optimizer,
+    device,
+    dynamics_fn,
+    process_weight=0.1,
+    value_predictor=None,
+    value_weight=0.01,
+    cost_params=None,
+):
+    """
+    Train for one epoch with process supervision.
+
+    Supervises ALL refinement iterations, not just final output.
+    Rewards the model for progressively improving solutions.
+
+    Args:
+        model: TRC model
+        train_loader: Training data loader
+        optimizer: Optimizer
+        device: Device to train on
+        dynamics_fn: Dynamics simulation function (must be differentiable!)
+        process_weight: Weight for process supervision reward (λ)
+        value_predictor: Optional value function network
+        value_weight: Weight for value prediction loss
+        cost_params: Dictionary with Q, R, Q_final cost matrices
+
+    Returns:
+        Dictionary with average metrics for the epoch
+    """
+    from .process_supervision import compute_combined_supervision_loss
+
+    model.train()
+    if value_predictor is not None:
+        value_predictor.train()
+
+    # Accumulators for metrics
+    total_loss = 0.0
+    total_control_loss = 0.0
+    total_process_reward = 0.0
+    total_avg_improvement = 0.0
+    total_value_loss = 0.0
+    num_batches = 0
+
+    progress_bar = tqdm(train_loader, desc='Training (Process Supervision)')
+
+    for batch_data in progress_bar:
+        # Unpack batch
+        if len(batch_data) == 4:
+            initial, target, controls_gt, states_gt = batch_data
+        else:
+            initial, target, controls_gt = batch_data
+            states_gt = None
+
+        initial = initial.to(device)
+        target = target.to(device)
+        controls_gt = controls_gt.to(device)
+
+        # Forward pass with ALL iterations
+        optimizer.zero_grad()
+        output = model(
+            current_state=initial,
+            target_state=target,
+            return_all_iterations=True  # KEY: Get all intermediate controls!
+        )
+
+        # Compute process supervision loss
+        loss_dict = compute_combined_supervision_loss(
+            model_output=output,
+            target_controls=controls_gt,
+            initial_state=initial,
+            target_state=target,
+            dynamics_fn=dynamics_fn,
+            process_weight=process_weight,
+            value_predictor=value_predictor,
+            value_weight=value_weight,
+            cost_params=cost_params,
+        )
+
+        loss = loss_dict['total_loss']
+
+        # Backward pass
+        loss.backward()
+
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        if value_predictor is not None:
+            torch.nn.utils.clip_grad_norm_(value_predictor.parameters(), max_norm=1.0)
+
+        optimizer.step()
+
+        # Track metrics
+        total_loss += loss.item()
+        total_control_loss += loss_dict['final_control_loss'].item()
+        total_process_reward += loss_dict['process_reward'].item()
+        total_avg_improvement += loss_dict['avg_improvement'].item()
+        if 'value_loss' in loss_dict:
+            total_value_loss += loss_dict['value_loss'].item()
+        num_batches += 1
+
+        # Update progress bar
+        progress_bar.set_postfix({
+            'loss': f'{loss.item():.4f}',
+            'ctrl': f'{loss_dict["final_control_loss"].item():.4f}',
+            'proc': f'{loss_dict["process_reward"].item():.4f}',
+            'impr': f'{loss_dict["avg_improvement"].item():.4f}',
+        })
+
+    # Return average metrics
+    metrics = {
+        'loss': total_loss / num_batches,
+        'control_loss': total_control_loss / num_batches,
+        'process_reward': total_process_reward / num_batches,
+        'avg_improvement': total_avg_improvement / num_batches,
+    }
+
+    if value_predictor is not None:
+        metrics['value_loss'] = total_value_loss / num_batches
+
+    return metrics
+
+
+def validate_process_supervision(
+    model,
+    val_loader,
+    device,
+    dynamics_fn,
+    process_weight=0.1,
+    value_predictor=None,
+    value_weight=0.01,
+    cost_params=None,
+):
+    """
+    Validate model with process supervision metrics.
+
+    Args:
+        model: TRC model
+        val_loader: Validation data loader
+        device: Device
+        dynamics_fn: Dynamics simulation function
+        process_weight: Weight for process supervision
+        value_predictor: Optional value function network
+        value_weight: Weight for value prediction loss
+        cost_params: Dictionary with Q, R, Q_final cost matrices
+
+    Returns:
+        Dictionary with average metrics
+    """
+    from .process_supervision import compute_combined_supervision_loss
+
+    model.eval()
+    if value_predictor is not None:
+        value_predictor.eval()
+
+    # Accumulators
+    total_loss = 0.0
+    total_control_loss = 0.0
+    total_process_reward = 0.0
+    total_avg_improvement = 0.0
+    total_value_loss = 0.0
+    num_batches = 0
+
+    with torch.no_grad():
+        for batch_data in val_loader:
+            # Unpack batch
+            if len(batch_data) == 4:
+                initial, target, controls_gt, states_gt = batch_data
+            else:
+                initial, target, controls_gt = batch_data
+
+            initial = initial.to(device)
+            target = target.to(device)
+            controls_gt = controls_gt.to(device)
+
+            # Forward pass with all iterations
+            output = model(
+                current_state=initial,
+                target_state=target,
+                return_all_iterations=True
+            )
+
+            # Compute loss
+            loss_dict = compute_combined_supervision_loss(
+                model_output=output,
+                target_controls=controls_gt,
+                initial_state=initial,
+                target_state=target,
+                dynamics_fn=dynamics_fn,
+                process_weight=process_weight,
+                value_predictor=value_predictor,
+                value_weight=value_weight,
+                cost_params=cost_params,
+            )
+
+            # Track metrics
+            total_loss += loss_dict['total_loss'].item()
+            total_control_loss += loss_dict['final_control_loss'].item()
+            total_process_reward += loss_dict['process_reward'].item()
+            total_avg_improvement += loss_dict['avg_improvement'].item()
+            if 'value_loss' in loss_dict:
+                total_value_loss += loss_dict['value_loss'].item()
+            num_batches += 1
+
+    # Return average metrics
+    metrics = {
+        'loss': total_loss / num_batches,
+        'control_loss': total_control_loss / num_batches,
+        'process_reward': total_process_reward / num_batches,
+        'avg_improvement': total_avg_improvement / num_batches,
+    }
+
+    if value_predictor is not None:
+        metrics['value_loss'] = total_value_loss / num_batches
+
+    return metrics
+
+
+def train_with_process_supervision(
+    model,
+    train_loader,
+    val_loader,
+    dynamics_fn,
+    epochs: int = 100,
+    lr: float = 1e-3,
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
+    output_dir: str = 'outputs/process_supervision',
+    patience: int = 20,
+    scheduler_type: str = 'cosine',
+    process_weight: float = 0.1,
+    value_predictor=None,
+    value_weight: float = 0.01,
+    cost_params=None,
+):
+    """
+    Main training loop with process supervision.
+
+    Args:
+        model: TinyRecursiveControl model
+        train_loader: Training data loader
+        val_loader: Validation data loader
+        dynamics_fn: Dynamics simulation function (must be differentiable!)
+        epochs: Number of training epochs
+        lr: Learning rate
+        device: Device to train on
+        output_dir: Output directory for checkpoints
+        patience: Early stopping patience
+        scheduler_type: LR scheduler type
+        process_weight: Weight for process supervision (λ)
+        value_predictor: Optional value function network
+        value_weight: Weight for value prediction loss
+        cost_params: Dictionary with Q, R, Q_final cost matrices
+
+    Returns:
+        Trained model
+    """
+    logger.info("=" * 70)
+    logger.info("Training with Process Supervision (TRM-Style)")
+    logger.info("=" * 70)
+    logger.info(f"Device: {device}")
+    logger.info(f"Model parameters: {count_parameters(model):,}")
+    logger.info(f"Epochs: {epochs}")
+    logger.info(f"Learning rate: {lr}")
+    logger.info(f"Process weight (λ): {process_weight}")
+    logger.info(f"Batch size: {train_loader.batch_size}")
+    logger.info(f"Train batches: {len(train_loader)}")
+    logger.info(f"Val batches: {len(val_loader)}")
+    if value_predictor is not None:
+        logger.info(f"Value predictor enabled (weight: {value_weight})")
+    logger.info("=" * 70)
+
+    # Move model to device
+    model = model.to(device)
+    if value_predictor is not None:
+        value_predictor = value_predictor.to(device)
+
+    # Optimizer (include value predictor if provided)
+    params = list(model.parameters())
+    if value_predictor is not None:
+        params += list(value_predictor.parameters())
+
+    optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=1e-5)
+
+    # Learning rate scheduler
+    scheduler = get_lr_scheduler(optimizer, scheduler_type, epochs)
+
+    # Training utilities
+    checkpoint = ModelCheckpoint(output_dir, metric_name='val_loss', mode='min')
+    early_stopping = EarlyStopping(patience=patience, mode='min')
+    stats = TrainingStats(output_dir)
+
+    # Training loop
+    best_val_loss = float('inf')
+
+    for epoch in range(epochs):
+        logger.info(f"\nEpoch {epoch+1}/{epochs}")
+
+        # Train
+        train_metrics = train_epoch_process_supervision(
+            model=model,
+            train_loader=train_loader,
+            optimizer=optimizer,
+            device=device,
+            dynamics_fn=dynamics_fn,
+            process_weight=process_weight,
+            value_predictor=value_predictor,
+            value_weight=value_weight,
+            cost_params=cost_params,
+        )
+
+        # Validate
+        val_metrics = validate_process_supervision(
+            model=model,
+            val_loader=val_loader,
+            device=device,
+            dynamics_fn=dynamics_fn,
+            process_weight=process_weight,
+            value_predictor=value_predictor,
+            value_weight=value_weight,
+            cost_params=cost_params,
+        )
+
+        # Get current learning rate
+        current_lr = optimizer.param_groups[0]['lr']
+
+        # Log metrics
+        logger.info(f"Train - Loss: {train_metrics['loss']:.4f}, "
+                   f"Control: {train_metrics['control_loss']:.4f}, "
+                   f"Improvement: {train_metrics['avg_improvement']:.4f}")
+        logger.info(f"Val   - Loss: {val_metrics['loss']:.4f}, "
+                   f"Control: {val_metrics['control_loss']:.4f}, "
+                   f"Improvement: {val_metrics['avg_improvement']:.4f}")
+
+        # Prepare metrics for stats
+        metrics = {
+            'train_loss': train_metrics['loss'],
+            'train_control_loss': train_metrics['control_loss'],
+            'train_improvement': train_metrics['avg_improvement'],
+            'val_loss': val_metrics['loss'],
+            'val_control_loss': val_metrics['control_loss'],
+            'val_improvement': val_metrics['avg_improvement'],
+            'learning_rate': current_lr,
+        }
+
+        if value_predictor is not None:
+            metrics['train_value_loss'] = train_metrics['value_loss']
+            metrics['val_value_loss'] = val_metrics['value_loss']
+
+        # Update statistics
+        stats.update(epoch, metrics)
+
+        # Save checkpoint
+        checkpoint_data = {
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'epoch': epoch,
+            'metrics': metrics,
+        }
+        if value_predictor is not None:
+            checkpoint_data['value_predictor'] = value_predictor.state_dict()
+
+        checkpoint.save(model, optimizer, epoch, metrics)
+
+        # Check early stopping
+        if early_stopping(val_metrics['loss']):
+            logger.info(f"Early stopping at epoch {epoch+1}")
+            break
+
+        # Update learning rate
+        if scheduler is not None:
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_metrics['loss'])
+            else:
+                scheduler.step()
+
+        # Track best
+        if val_metrics['loss'] < best_val_loss:
+            best_val_loss = val_metrics['loss']
+
+    # Save final statistics
+    stats.save()
+    stats.plot()
+
+    logger.info("=" * 70)
+    logger.info("Training Complete!")
+    logger.info(f"Best validation loss: {best_val_loss:.4f}")
+    logger.info(f"Model saved to: {output_dir}")
+    logger.info("=" * 70)
+
+    return model
+
+
 if __name__ == '__main__':
     main()
