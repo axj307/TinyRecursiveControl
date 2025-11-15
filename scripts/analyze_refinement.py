@@ -246,6 +246,7 @@ def main():
         logger.info(f"  Iteration {i}: {cost:.4f}")
 
     # Compare to baseline if provided
+    baseline_cost = None
     if args.baseline is not None:
         logger.info("\nLoading baseline model...")
         baseline_model = load_model(args.baseline, device=device)
@@ -271,9 +272,12 @@ def main():
         logger.info(f"Improvement:              {comparison['improvement_pct']:.1f}%")
         logger.info(f"Cost reduction:           {comparison['cost_reduction']:.4f}")
 
-    # Plot
+        # Store baseline cost for visualization
+        baseline_cost = baseline_metrics.final_cost
+
+    # Plot (with baseline if available)
     logger.info("\nGenerating refinement plots...")
-    evaluator.plot_refinement_curves(metrics, output_path=args.output)
+    evaluator.plot_refinement_curves(metrics, output_path=args.output, baseline_cost=baseline_cost)
 
     logger.info("\n" + "=" * 70)
     logger.info("Analysis Complete!")

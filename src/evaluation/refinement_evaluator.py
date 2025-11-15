@@ -245,20 +245,22 @@ class RefinementEvaluator:
         metrics: RefinementMetrics,
         output_path: str = 'refinement_analysis.png',
         num_examples: int = 10,
+        baseline_cost: float = None,
     ):
         """
         Plot refinement quality analysis.
 
         Creates a multi-panel figure showing:
-        1. Cost vs iteration (average + examples)
+        1. Cost vs iteration (average + examples) with optional BC baseline
         2. Cost reduction per iteration
         3. Control MSE vs iteration
-        4. Improvement distribution
+        4. Improvement distribution with optional BC baseline reference
 
         Args:
             metrics: RefinementMetrics from evaluate()
             output_path: Path to save figure
             num_examples: Number of example trajectories to plot
+            baseline_cost: Optional baseline (BC) cost for comparison
         """
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
@@ -270,7 +272,7 @@ class RefinementEvaluator:
 
         # Plot average cost with std
         ax.plot(iterations, metrics.avg_costs_per_iteration,
-                'o-', linewidth=2, markersize=8, label='Average', color='blue')
+                'o-', linewidth=2, markersize=8, label='PS Average', color='blue')
         ax.fill_between(
             iterations,
             metrics.avg_costs_per_iteration - metrics.std_costs_per_iteration,
@@ -282,6 +284,17 @@ class RefinementEvaluator:
         for i in range(min(num_examples, len(metrics.iteration_costs))):
             ax.plot(iterations, metrics.iteration_costs[i],
                    '-', alpha=0.3, color='gray', linewidth=1)
+
+        # Add BC baseline if provided
+        if baseline_cost is not None:
+            ax.axhline(y=baseline_cost, color='red', linestyle='--',
+                      linewidth=2, label=f'BC Baseline: {baseline_cost:.2f}')
+            # Add text annotation
+            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+            ax.text(num_iters * 0.98, baseline_cost + y_range * 0.02,
+                   f'BC: {baseline_cost:.1f}',
+                   ha='right', va='bottom', fontsize=10,
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
         ax.set_xlabel('Iteration', fontsize=12)
         ax.set_ylabel('Trajectory Cost', fontsize=12)
@@ -322,9 +335,24 @@ class RefinementEvaluator:
         ax.hist(total_reductions, bins=30, alpha=0.7, color='purple', edgecolor='black')
         ax.axvline(x=total_reductions.mean(), color='red',
                   linestyle='--', linewidth=2, label=f'Mean: {total_reductions.mean():.3f}')
+
+        # Add BC baseline comparison if provided
+        if baseline_cost is not None:
+            ps_initial_cost = metrics.avg_costs_per_iteration[0]
+            ps_final_cost = metrics.avg_costs_per_iteration[-1]
+            bc_improvement = ps_initial_cost - baseline_cost
+            ps_total_improvement = ps_initial_cost - ps_final_cost
+
+            # Show where BC sits relative to PS refinement
+            ax.axvline(x=bc_improvement, color='orange', linestyle=':',
+                      linewidth=2, label=f'BC Improvement: {bc_improvement:.1f}')
+
         ax.set_xlabel('Total Cost Reduction', fontsize=12)
         ax.set_ylabel('Count', fontsize=12)
-        ax.set_title('Distribution of Cost Reductions', fontsize=14, fontweight='bold')
+        title = 'Distribution of Cost Reductions'
+        if baseline_cost is not None:
+            title += ' (PS vs BC)'
+        ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3, axis='y')
 
