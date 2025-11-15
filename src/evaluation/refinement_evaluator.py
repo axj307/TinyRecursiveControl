@@ -245,13 +245,13 @@ class RefinementEvaluator:
         metrics: RefinementMetrics,
         output_path: str = 'refinement_analysis.png',
         num_examples: int = 10,
-        baseline_cost: float = None,
+        baseline_metrics: 'RefinementMetrics' = None,
     ):
         """
         Plot refinement quality analysis.
 
         Creates a multi-panel figure showing:
-        1. Cost vs iteration (average + examples) with optional BC baseline
+        1. Cost vs iteration (average + examples) with optional BC baseline curve
         2. Cost reduction per iteration
         3. Control MSE vs iteration
         4. Improvement distribution with optional BC baseline reference
@@ -260,7 +260,7 @@ class RefinementEvaluator:
             metrics: RefinementMetrics from evaluate()
             output_path: Path to save figure
             num_examples: Number of example trajectories to plot
-            baseline_cost: Optional baseline (BC) cost for comparison
+            baseline_metrics: Optional baseline (BC) RefinementMetrics for comparison
         """
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
@@ -270,7 +270,7 @@ class RefinementEvaluator:
         # 1. Cost vs Iteration (top-left)
         ax = axes[0, 0]
 
-        # Plot average cost with std
+        # Plot PS average cost with std
         ax.plot(iterations, metrics.avg_costs_per_iteration,
                 'o-', linewidth=2, markersize=8, label='PS Average', color='blue')
         ax.fill_between(
@@ -280,21 +280,22 @@ class RefinementEvaluator:
             alpha=0.2, color='blue'
         )
 
-        # Plot a few example trajectories
+        # Plot a few PS example trajectories
         for i in range(min(num_examples, len(metrics.iteration_costs))):
             ax.plot(iterations, metrics.iteration_costs[i],
                    '-', alpha=0.3, color='gray', linewidth=1)
 
-        # Add BC baseline if provided
-        if baseline_cost is not None:
-            ax.axhline(y=baseline_cost, color='red', linestyle='--',
-                      linewidth=2, label=f'BC Baseline: {baseline_cost:.2f}')
-            # Add text annotation
-            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-            ax.text(num_iters * 0.98, baseline_cost + y_range * 0.02,
-                   f'BC: {baseline_cost:.1f}',
-                   ha='right', va='bottom', fontsize=10,
-                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        # Add BC refinement curve if provided
+        if baseline_metrics is not None:
+            ax.plot(iterations, baseline_metrics.avg_costs_per_iteration,
+                   'o-', linewidth=2, markersize=8, label='BC Average',
+                   color='red', alpha=0.8)
+            ax.fill_between(
+                iterations,
+                baseline_metrics.avg_costs_per_iteration - baseline_metrics.std_costs_per_iteration,
+                baseline_metrics.avg_costs_per_iteration + baseline_metrics.std_costs_per_iteration,
+                alpha=0.15, color='red'
+            )
 
         ax.set_xlabel('Iteration', fontsize=12)
         ax.set_ylabel('Trajectory Cost', fontsize=12)
@@ -330,27 +331,23 @@ class RefinementEvaluator:
         # 4. Improvement Distribution (bottom-right)
         ax = axes[1, 1]
 
-        # Histogram of total cost reductions
-        total_reductions = metrics.iteration_costs[:, 0] - metrics.iteration_costs[:, -1]
-        ax.hist(total_reductions, bins=30, alpha=0.7, color='purple', edgecolor='black')
-        ax.axvline(x=total_reductions.mean(), color='red',
-                  linestyle='--', linewidth=2, label=f'Mean: {total_reductions.mean():.3f}')
+        # Histogram of PS total cost reductions
+        ps_total_reductions = metrics.iteration_costs[:, 0] - metrics.iteration_costs[:, -1]
+        ax.hist(ps_total_reductions, bins=30, alpha=0.7, color='purple', edgecolor='black',
+               label='PS Reductions')
+        ax.axvline(x=ps_total_reductions.mean(), color='blue',
+                  linestyle='--', linewidth=2, label=f'PS Mean: {ps_total_reductions.mean():.1f}')
 
-        # Add BC baseline comparison if provided
-        if baseline_cost is not None:
-            ps_initial_cost = metrics.avg_costs_per_iteration[0]
-            ps_final_cost = metrics.avg_costs_per_iteration[-1]
-            bc_improvement = ps_initial_cost - baseline_cost
-            ps_total_improvement = ps_initial_cost - ps_final_cost
-
-            # Show where BC sits relative to PS refinement
-            ax.axvline(x=bc_improvement, color='orange', linestyle=':',
-                      linewidth=2, label=f'BC Improvement: {bc_improvement:.1f}')
+        # Add BC comparison if provided
+        if baseline_metrics is not None:
+            bc_total_reductions = baseline_metrics.iteration_costs[:, 0] - baseline_metrics.iteration_costs[:, -1]
+            ax.axvline(x=bc_total_reductions.mean(), color='red',
+                      linestyle='--', linewidth=2, label=f'BC Mean: {bc_total_reductions.mean():.1f}')
 
         ax.set_xlabel('Total Cost Reduction', fontsize=12)
         ax.set_ylabel('Count', fontsize=12)
         title = 'Distribution of Cost Reductions'
-        if baseline_cost is not None:
+        if baseline_metrics is not None:
             title += ' (PS vs BC)'
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
