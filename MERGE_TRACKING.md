@@ -199,19 +199,27 @@ where:
 - [ ] Add config toggle: `training.use_process_supervision: true/false`
 - [ ] Fix any integration bugs discovered
 
-### Phase 3: Multi-Problem Support (Days 4-7) - ⏳ IN PROGRESS
+### Phase 3: Multi-Problem Support (Days 4-7) - ✅ CORE COMPLETE, TESTING READY
 - [x] Create `src/environments/torch_dynamics.py` module (completed 2025-11-14)
 - [x] Implement `simulate_double_integrator_torch()` (completed 2025-11-14)
 - [x] Implement `simulate_pendulum_torch()` with angle wrapping (completed 2025-11-14)
 - [x] Implement `simulate_rocket_landing_torch()` with constraints (completed 2025-11-14)
 - [x] Add `get_torch_dynamics()` method to each environment class (completed 2025-11-14)
 - [x] Integrate into supervised_trainer.py (completed 2025-11-14)
-- [ ] Write unit tests for torch_dynamics module
-- [ ] Test gradient flow through dynamics
+- [x] Write comprehensive unit tests for torch_dynamics module (completed 2025-11-14)
+- [x] Write gradient flow tests (completed 2025-11-14)
+- [x] Write quick integration test (completed 2025-11-14)
+- [ ] **RUN TESTS** (requires conda environment activation)
+- [ ] Fix any issues discovered
 - [ ] Validate process supervision on all problems
 
-**Implementation Commit**: 6106314
-**Status**: Core implementation complete, testing pending
+**Implementation Commits**: 6106314 (dynamics), 7b9d0f5 (tests)
+**Status**: Implementation complete, tests written, ready to run
+**Test Files**:
+- `tests/test_torch_dynamics.py` (13 tests, ~400 lines)
+- `tests/test_gradient_flow.py` (8 tests, ~250 lines)
+- `tests/test_process_supervision_quick.py` (1 integration test, ~220 lines)
+- `tests/run_all_tests.sh` (run all)
 
 ### Phase 4: Validation & Experiments (Days 8-10)
 - [ ] Run systematic experiments across all problems:
