@@ -112,14 +112,14 @@ def plot_learning_curves(experiments, output_dir):
                 continue
 
             stats = load_training_stats(prob_exps[method])
-            if stats is None or 'train_losses' not in stats:
+            if stats is None or 'train_loss' not in stats:
                 continue
 
-            epochs = list(range(1, len(stats['train_losses']) + 1))
+            epochs = list(range(1, len(stats['train_loss']) + 1))
             label = "Process Supervision" if method == "ps" else "Behavior Cloning"
             color = '#2E86AB' if method == 'ps' else '#A23B72'
 
-            ax_train.plot(epochs, stats['train_losses'], label=label,
+            ax_train.plot(epochs, stats['train_loss'], label=label,
                          color=color, linewidth=2, marker='o', markersize=3)
 
         ax_train.set_xlabel('Epoch', fontsize=12)
@@ -128,21 +128,31 @@ def plot_learning_curves(experiments, output_dir):
         ax_train.legend(fontsize=11)
         ax_train.grid(True, alpha=0.3)
 
-        # Plot validation loss
+        # Plot validation/evaluation loss
         ax_val = axes[i, 1]
         for method in ['bc', 'ps']:
             if method not in prob_exps:
                 continue
 
             stats = load_training_stats(prob_exps[method])
-            if stats is None or 'val_losses' not in stats:
+            if stats is None:
                 continue
 
-            epochs = list(range(1, len(stats['val_losses']) + 1))
+            # PS has val_loss, BC has eval_loss (or empty val_loss)
+            if 'val_loss' in stats and len(stats['val_loss']) > 0:
+                loss_data = stats['val_loss']
+                loss_type = "Validation"
+            elif 'eval_loss' in stats and len(stats['eval_loss']) > 0:
+                loss_data = stats['eval_loss']
+                loss_type = "Evaluation"
+            else:
+                continue
+
+            epochs = list(range(1, len(loss_data) + 1))
             label = "Process Supervision" if method == "ps" else "Behavior Cloning"
             color = '#2E86AB' if method == 'ps' else '#A23B72'
 
-            ax_val.plot(epochs, stats['val_losses'], label=label,
+            ax_val.plot(epochs, loss_data, label=label,
                        color=color, linewidth=2, marker='s', markersize=3)
 
         ax_val.set_xlabel('Epoch', fontsize=12)
@@ -185,9 +195,10 @@ def plot_test_metrics_comparison(experiments, output_dir):
         # BC metrics
         if 'bc' in prob_exps:
             eval_results = load_evaluation_results(prob_exps['bc'])
-            if eval_results:
-                bc_errors.append(eval_results.get('mean_error', 0))
-                bc_success.append(eval_results.get('success_rate', 0) * 100)
+            if eval_results and 'trc' in eval_results:
+                trc_results = eval_results['trc']
+                bc_errors.append(trc_results.get('total_error_mean', 0))
+                bc_success.append(trc_results.get('success_rate', 0) * 100)
             else:
                 bc_errors.append(0)
                 bc_success.append(0)
@@ -198,9 +209,10 @@ def plot_test_metrics_comparison(experiments, output_dir):
         # PS metrics
         if 'ps' in prob_exps:
             eval_results = load_evaluation_results(prob_exps['ps'])
-            if eval_results:
-                ps_errors.append(eval_results.get('mean_error', 0))
-                ps_success.append(eval_results.get('success_rate', 0) * 100)
+            if eval_results and 'trc' in eval_results:
+                trc_results = eval_results['trc']
+                ps_errors.append(trc_results.get('total_error_mean', 0))
+                ps_success.append(trc_results.get('success_rate', 0) * 100)
             else:
                 ps_errors.append(0)
                 ps_success.append(0)
@@ -264,14 +276,16 @@ def plot_convergence_comparison(experiments, output_dir):
         # BC convergence
         if 'bc' in prob_exps:
             stats = load_training_stats(prob_exps['bc'])
-            if stats and 'val_losses' in stats:
-                val_losses = stats['val_losses']
-                final_loss = val_losses[-1]
+            # Use eval_loss for BC, val_loss for PS
+            loss_key = 'eval_loss' if stats and 'eval_loss' in stats and len(stats.get('eval_loss', [])) > 0 else 'val_loss'
+            if stats and loss_key in stats and len(stats[loss_key]) > 0:
+                losses = stats[loss_key]
+                final_loss = losses[-1]
                 target_loss = final_loss * 1.1  # 90% of final performance
 
                 # Find first epoch where we reach target
-                converged_epoch = len(val_losses)
-                for i, loss in enumerate(val_losses):
+                converged_epoch = len(losses)
+                for i, loss in enumerate(losses):
                     if loss <= target_loss:
                         converged_epoch = i + 1
                         break
@@ -284,8 +298,8 @@ def plot_convergence_comparison(experiments, output_dir):
         # PS convergence
         if 'ps' in prob_exps:
             stats = load_training_stats(prob_exps['ps'])
-            if stats and 'val_losses' in stats:
-                val_losses = stats['val_losses']
+            if stats and 'val_loss' in stats and len(stats['val_loss']) > 0:
+                val_losses = stats['val_loss']
                 final_loss = val_losses[-1]
                 target_loss = final_loss * 1.1
 
@@ -349,9 +363,10 @@ def generate_summary_report(experiments, output_dir):
                     continue
 
                 eval_results = load_evaluation_results(prob_exps[method])
-                if eval_results:
-                    error = eval_results.get('mean_error', 0)
-                    success = eval_results.get('success_rate', 0) * 100
+                if eval_results and 'trc' in eval_results:
+                    trc_results = eval_results['trc']
+                    error = trc_results.get('total_error_mean', 0)
+                    success = trc_results.get('success_rate', 0) * 100
                     method_name = "BC" if method == "bc" else "PS"
                     f.write(f"| {problem.replace('_', ' ').title()} | {method_name} | "
                            f"{error:.4f} | {success:.1f}% |\n")
@@ -369,9 +384,13 @@ def generate_summary_report(experiments, output_dir):
 
                 stats = load_training_stats(prob_exps[method])
                 if stats:
-                    train_loss = stats['train_losses'][-1] if 'train_losses' in stats else 0
-                    val_loss = stats['val_losses'][-1] if 'val_losses' in stats else 0
-                    epochs = len(stats['train_losses']) if 'train_losses' in stats else 0
+                    train_loss = stats['train_loss'][-1] if 'train_loss' in stats else 0
+                    # BC uses eval_loss, PS uses val_loss
+                    if method == 'bc':
+                        val_loss = stats['eval_loss'][-1] if 'eval_loss' in stats and len(stats.get('eval_loss', [])) > 0 else (stats['val_loss'][-1] if 'val_loss' in stats and len(stats.get('val_loss', [])) > 0 else 0)
+                    else:
+                        val_loss = stats['val_loss'][-1] if 'val_loss' in stats else 0
+                    epochs = len(stats['train_loss']) if 'train_loss' in stats else 0
                     method_name = "BC" if method == "bc" else "PS"
                     f.write(f"| {problem.replace('_', ' ').title()} | {method_name} | "
                            f"{train_loss:.6f} | {val_loss:.6f} | {epochs} |\n")
