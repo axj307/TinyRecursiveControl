@@ -132,9 +132,7 @@ def test_process_supervision_gradient_flow(runner):
     model = TinyRecursiveControl.create_two_level_small(
         state_dim=2,
         control_dim=1,
-        control_horizon=50,
-        H_cycles=2,  # Small for testing
-        L_cycles=2
+        control_horizon=50
     )
 
     # Sample data
@@ -146,8 +144,10 @@ def test_process_supervision_gradient_flow(runner):
     # Forward pass with all iterations
     output = model(initial_state, target_state, return_all_iterations=True)
 
-    # Get all control iterations (simplified - just use final controls multiple times for this test)
-    all_controls = [output['controls']] * 3  # Pretend we have 3 iterations
+    # Check if model returned all_controls
+    if 'all_controls' not in output:
+        # Create dummy all_controls for testing
+        output['all_controls'] = output['controls'].unsqueeze(1).repeat(1, 3, 1, 1)
 
     # Define simple dynamics function
     def dynamics_fn(init_state, controls):
@@ -156,14 +156,13 @@ def test_process_supervision_gradient_flow(runner):
     # Compute process supervision loss
     try:
         loss_dict = compute_process_supervision_loss(
-            all_controls=all_controls,
-            optimal_controls=optimal_controls,
+            model_output=output,
+            target_controls=optimal_controls,
             initial_state=initial_state,
             target_state=target_state,
             dynamics_fn=dynamics_fn,
-            Q=torch.eye(2),
-            R=torch.tensor([[0.1]]),
-            lambda_weight=0.1
+            process_weight=0.1,
+            cost_params={'Q': torch.eye(2), 'R': 0.1}
         )
 
         total_loss = loss_dict['total_loss']
@@ -198,11 +197,11 @@ def test_double_integrator_gradient_flow(runner):
         nn.Linear(2, 32),
         nn.ReLU(),
         nn.Linear(32, 10)  # 10 timesteps, 1D control
-    ).reshape_output = lambda x: x.view(-1, 10, 1)
+    )
 
     initial_state = torch.randn(4, 2, requires_grad=True)
-    controls = control_net(initial_state)
-    controls = controls.view(4, 10, 1)
+    controls_flat = control_net(initial_state)
+    controls = controls_flat.view(4, 10, 1)
 
     # Simulate
     states = simulate_double_integrator_torch(initial_state, controls, dt=0.33)

@@ -187,7 +187,7 @@ def test_double_integrator_gradients(runner):
 
 def test_vanderpol_correctness(runner):
     """Test Van der Pol against NumPy implementation"""
-    problem = VanderpolOscillator(mu=1.0, dt=0.05, horizon=50)
+    problem = VanderpolOscillator(mu_base=1.0, dt=0.05, horizon=50)
 
     # Test data
     initial_state = torch.tensor([[0.1, 0.0]])  # Small initial displacement
@@ -246,7 +246,7 @@ def test_vanderpol_gradients(runner):
 
 def test_pendulum_correctness(runner):
     """Test pendulum against NumPy implementation"""
-    problem = Pendulum(m=1.0, l=1.0, g=9.81, b=0.1, dt=0.05, horizon=50)
+    problem = Pendulum(mass=1.0, length=1.0, gravity=9.81, friction=0.1, dt=0.05, horizon=50)
 
     # Test data - start near upside down
     initial_state = torch.tensor([[2.5, 0.0]])  # angle, angular_velocity
