@@ -248,114 +248,195 @@ class RefinementEvaluator:
         baseline_metrics: 'RefinementMetrics' = None,
     ):
         """
-        Plot refinement quality analysis.
+        Plot refinement quality analysis with BC vs PS comparison.
 
-        Creates a multi-panel figure showing:
-        1. Cost vs iteration (average + examples) with optional BC baseline curve
-        2. Cost reduction per iteration
-        3. Control MSE vs iteration
-        4. Improvement distribution with optional BC baseline reference
+        Creates a redesigned 4-panel figure showing:
+        1. Refinement curves (PS vs BC) with explanatory annotations
+        2. Final performance comparison (iteration 3 costs)
+        3. Total refinement capability (cost reduction comparison)
+        4. Distribution analysis with clear annotations
 
         Args:
-            metrics: RefinementMetrics from evaluate()
+            metrics: RefinementMetrics from evaluate() (PS model)
             output_path: Path to save figure
             num_examples: Number of example trajectories to plot
             baseline_metrics: Optional baseline (BC) RefinementMetrics for comparison
         """
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(16, 11))
 
         num_iters = len(metrics.avg_costs_per_iteration)
         iterations = np.arange(num_iters)
 
-        # 1. Cost vs Iteration (top-left)
+        # 1. Refinement Curves with Explanatory Annotations (top-left)
         ax = axes[0, 0]
 
         # Plot PS average cost with std
         ax.plot(iterations, metrics.avg_costs_per_iteration,
-                'o-', linewidth=2, markersize=8, label='PS Average', color='blue')
+                'o-', linewidth=2.5, markersize=9, label='PS (Process Supervision)',
+                color='#1f77b4', zorder=3)
         ax.fill_between(
             iterations,
             metrics.avg_costs_per_iteration - metrics.std_costs_per_iteration,
             metrics.avg_costs_per_iteration + metrics.std_costs_per_iteration,
-            alpha=0.2, color='blue'
+            alpha=0.2, color='#1f77b4', zorder=2
         )
 
         # Plot a few PS example trajectories
         for i in range(min(num_examples, len(metrics.iteration_costs))):
             ax.plot(iterations, metrics.iteration_costs[i],
-                   '-', alpha=0.3, color='gray', linewidth=1)
+                   '-', alpha=0.2, color='gray', linewidth=1, zorder=1)
 
         # Add BC refinement curve if provided
         if baseline_metrics is not None:
             ax.plot(iterations, baseline_metrics.avg_costs_per_iteration,
-                   'o-', linewidth=2, markersize=8, label='BC Average',
-                   color='red', alpha=0.8)
+                   'o-', linewidth=2.5, markersize=9, label='BC (Behavior Cloning)',
+                   color='#d62728', alpha=0.9, zorder=3)
             ax.fill_between(
                 iterations,
                 baseline_metrics.avg_costs_per_iteration - baseline_metrics.std_costs_per_iteration,
                 baseline_metrics.avg_costs_per_iteration + baseline_metrics.std_costs_per_iteration,
-                alpha=0.15, color='red'
+                alpha=0.15, color='#d62728', zorder=2
             )
 
-        ax.set_xlabel('Iteration', fontsize=12)
-        ax.set_ylabel('Trajectory Cost', fontsize=12)
-        ax.set_title('Cost Reduction Across Iterations', fontsize=14, fontweight='bold')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+            # Add explanatory text box about BC behavior
+            textstr = 'BC trains only final iteration (iter 3)\nIntermediate iterations unsupervised\n→ Flat/non-monotonic curve expected'
+            props = dict(boxstyle='round', facecolor='wheat', alpha=0.8, edgecolor='#d62728', linewidth=2)
+            ax.text(0.98, 0.97, textstr, transform=ax.transAxes, fontsize=10,
+                   verticalalignment='top', horizontalalignment='right', bbox=props)
 
-        # 2. Cost Improvement per Iteration (top-right)
+        ax.set_xlabel('Iteration', fontsize=13, fontweight='bold')
+        ax.set_ylabel('Trajectory Cost (LQR)', fontsize=13, fontweight='bold')
+        ax.set_title('Refinement Behavior: PS vs BC', fontsize=15, fontweight='bold', pad=15)
+        ax.legend(loc='upper left', fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_xticks(iterations)
+
+        # 2. Final Performance Comparison (top-right) - NEW
         ax = axes[0, 1]
 
-        improvements_mean = metrics.iteration_improvements.mean(axis=0)
-        improvements_std = metrics.iteration_improvements.std(axis=0)
+        if baseline_metrics is not None:
+            ps_final = metrics.final_cost
+            bc_final = baseline_metrics.final_cost
 
-        ax.bar(np.arange(num_iters - 1), improvements_mean,
-               yerr=improvements_std, capsize=5, alpha=0.7, color='green')
-        ax.axhline(y=0, color='red', linestyle='--', linewidth=1)
-        ax.set_xlabel('Iteration', fontsize=12)
-        ax.set_ylabel('Cost Improvement', fontsize=12)
-        ax.set_title('Cost Reduction Per Iteration', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='y')
+            methods = ['PS\n(Process\nSupervision)', 'BC\n(Behavior\nCloning)']
+            costs = [ps_final, bc_final]
+            colors = ['#1f77b4', '#d62728']
 
-        # 3. Control MSE vs Iteration (bottom-left)
+            bars = ax.barh(methods, costs, color=colors, alpha=0.7, edgecolor='black', linewidth=1.5)
+
+            # Add value labels on bars
+            for i, (bar, cost) in enumerate(zip(bars, costs)):
+                width = bar.get_width()
+                ax.text(width * 1.02, bar.get_y() + bar.get_height()/2,
+                       f'{cost:.1f}',
+                       ha='left', va='center', fontsize=12, fontweight='bold')
+
+            # Calculate improvement percentage
+            if bc_final > 0:
+                improvement_pct = ((bc_final - ps_final) / bc_final) * 100
+                if improvement_pct > 0:
+                    result_text = f'PS achieves {improvement_pct:.1f}% lower cost'
+                    color = 'green'
+                else:
+                    result_text = f'BC achieves {-improvement_pct:.1f}% lower cost'
+                    color = 'red'
+
+                ax.text(0.5, -0.15, result_text, transform=ax.transAxes,
+                       ha='center', va='top', fontsize=11, fontweight='bold',
+                       color=color, bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+
+            ax.set_xlabel('Final Cost (Iteration 3)', fontsize=13, fontweight='bold')
+            ax.set_title('Final Performance Comparison', fontsize=15, fontweight='bold', pad=15)
+            ax.grid(True, alpha=0.3, axis='x', linestyle='--')
+        else:
+            # If no baseline, show PS performance only
+            ax.text(0.5, 0.5, 'No BC baseline\nprovided',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=14, bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+            ax.set_title('Final Performance', fontsize=15, fontweight='bold', pad=15)
+
+        # 3. Total Refinement Capability (bottom-left) - NEW
         ax = axes[1, 0]
 
-        ax.plot(iterations, metrics.control_mse_per_iteration,
-                'o-', linewidth=2, markersize=8, color='orange')
-        ax.set_xlabel('Iteration', fontsize=12)
-        ax.set_ylabel('Control MSE', fontsize=12)
-        ax.set_title('Control Accuracy vs Iteration', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.set_yscale('log')
+        if baseline_metrics is not None:
+            ps_reduction = metrics.avg_cost_reduction
+            bc_reduction = baseline_metrics.avg_cost_reduction
 
-        # 4. Improvement Distribution (bottom-right)
+            methods = ['PS', 'BC']
+            reductions = [ps_reduction, bc_reduction]
+            colors = ['#1f77b4', '#d62728']
+
+            bars = ax.bar(methods, reductions, color=colors, alpha=0.7,
+                         edgecolor='black', linewidth=1.5, width=0.6)
+
+            # Add value labels on bars
+            for bar, reduction in zip(bars, reductions):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, height * 1.02,
+                       f'{reduction:.1f}',
+                       ha='center', va='bottom', fontsize=12, fontweight='bold')
+
+            # Add ratio annotation
+            if bc_reduction > 0:
+                ratio = ps_reduction / bc_reduction
+                ratio_text = f'PS refines {ratio:.1f}× better than BC'
+                ax.text(0.5, 0.95, ratio_text, transform=ax.transAxes,
+                       ha='center', va='top', fontsize=11, fontweight='bold',
+                       color='darkgreen', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.6))
+
+            ax.set_ylabel('Total Cost Reduction', fontsize=13, fontweight='bold')
+            ax.set_title('Refinement Capability', fontsize=15, fontweight='bold', pad=15)
+            ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+            ax.set_ylim(0, max(reductions) * 1.15)
+        else:
+            # If no baseline, show PS reduction only
+            ps_reduction = metrics.avg_cost_reduction
+            ax.bar(['PS'], [ps_reduction], color='#1f77b4', alpha=0.7,
+                  edgecolor='black', linewidth=1.5, width=0.4)
+            ax.text(0, ps_reduction * 1.02, f'{ps_reduction:.1f}',
+                   ha='center', va='bottom', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Total Cost Reduction', fontsize=13, fontweight='bold')
+            ax.set_title('Refinement Capability', fontsize=15, fontweight='bold', pad=15)
+            ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+
+        # 4. Distribution Analysis (bottom-right) - ENHANCED
         ax = axes[1, 1]
 
         # Histogram of PS total cost reductions
         ps_total_reductions = metrics.iteration_costs[:, 0] - metrics.iteration_costs[:, -1]
-        ax.hist(ps_total_reductions, bins=30, alpha=0.7, color='purple', edgecolor='black',
-               label='PS Reductions')
-        ax.axvline(x=ps_total_reductions.mean(), color='blue',
-                  linestyle='--', linewidth=2, label=f'PS Mean: {ps_total_reductions.mean():.1f}')
+        ax.hist(ps_total_reductions, bins=30, alpha=0.6, color='#1f77b4', edgecolor='black',
+               label='PS Distribution', linewidth=0.5)
+
+        ps_mean = ps_total_reductions.mean()
+        ax.axvline(x=ps_mean, color='#1f77b4',
+                  linestyle='--', linewidth=2.5,
+                  label=f'PS Mean = {ps_mean:.1f}', zorder=3)
 
         # Add BC comparison if provided
         if baseline_metrics is not None:
             bc_total_reductions = baseline_metrics.iteration_costs[:, 0] - baseline_metrics.iteration_costs[:, -1]
-            ax.axvline(x=bc_total_reductions.mean(), color='red',
-                      linestyle='--', linewidth=2, label=f'BC Mean: {bc_total_reductions.mean():.1f}')
+            bc_mean = bc_total_reductions.mean()
+            ax.axvline(x=bc_mean, color='#d62728',
+                      linestyle='--', linewidth=2.5,
+                      label=f'BC Mean = {bc_mean:.1f}', zorder=3)
 
-        ax.set_xlabel('Total Cost Reduction', fontsize=12)
-        ax.set_ylabel('Count', fontsize=12)
+            # Add shaded region between means
+            ax.axvspan(min(ps_mean, bc_mean), max(ps_mean, bc_mean),
+                      alpha=0.15, color='yellow', zorder=1,
+                      label=f'Difference = {abs(ps_mean - bc_mean):.1f}')
+
+        ax.set_xlabel('Total Cost Reduction (Initial → Final)', fontsize=13, fontweight='bold')
+        ax.set_ylabel('Frequency', fontsize=13, fontweight='bold')
         title = 'Distribution of Cost Reductions'
         if baseline_metrics is not None:
             title += ' (PS vs BC)'
-        ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.legend()
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_title(title, fontsize=15, fontweight='bold', pad=15)
+        ax.legend(loc='best', fontsize=10, framealpha=0.9)
+        ax.grid(True, alpha=0.3, axis='y', linestyle='--')
 
         plt.tight_layout()
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        logger.info(f"Refinement analysis plot saved to: {output_path}")
+        logger.info(f"Refinement comparison plot saved to: {output_path}")
 
         plt.close()
 
