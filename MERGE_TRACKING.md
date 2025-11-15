@@ -199,14 +199,19 @@ where:
 - [ ] Add config toggle: `training.use_process_supervision: true/false`
 - [ ] Fix any integration bugs discovered
 
-### Phase 3: Multi-Problem Support (Days 4-7)
-- [ ] Create `src/environments/torch_dynamics.py` module
-- [ ] Implement `simulate_double_integrator_torch()`
-- [ ] Implement `simulate_pendulum_torch()` with angle wrapping
-- [ ] Implement `simulate_rocket_landing_torch()` with constraints
-- [ ] Add `get_torch_dynamics()` method to each environment class
+### Phase 3: Multi-Problem Support (Days 4-7) - ⏳ IN PROGRESS
+- [x] Create `src/environments/torch_dynamics.py` module (completed 2025-11-14)
+- [x] Implement `simulate_double_integrator_torch()` (completed 2025-11-14)
+- [x] Implement `simulate_pendulum_torch()` with angle wrapping (completed 2025-11-14)
+- [x] Implement `simulate_rocket_landing_torch()` with constraints (completed 2025-11-14)
+- [x] Add `get_torch_dynamics()` method to each environment class (completed 2025-11-14)
+- [x] Integrate into supervised_trainer.py (completed 2025-11-14)
+- [ ] Write unit tests for torch_dynamics module
 - [ ] Test gradient flow through dynamics
 - [ ] Validate process supervision on all problems
+
+**Implementation Commit**: 6106314
+**Status**: Core implementation complete, testing pending
 
 ### Phase 4: Validation & Experiments (Days 8-10)
 - [ ] Run systematic experiments across all problems:
@@ -490,6 +495,32 @@ def simulate_double_integrator_torch(
   - Iteration tracking (backward compatible)
 - **Backward compatibility**: Preserved - all existing functionality intact
 - **Next steps**: Phase 2 (investigate negative loss, add config toggle, baseline comparison)
+
+### 2025-11-14 (Evening): Phase 3 Core Implementation Complete ✅
+- **Phase 3 Major Milestone**: PyTorch dynamics implemented for all 4 problems!
+- Created `src/environments/torch_dynamics.py` (527 lines):
+  - `soft_clamp()`: Differentiable constraint enforcement
+  - `simulate_double_integrator_torch()`: Linear system (exact integration)
+  - `simulate_vanderpol_torch()`: Nonlinear oscillator (RK4)
+  - `simulate_pendulum_torch()`: With differentiable angle wrapping (atan2-based)
+  - `simulate_rocket_landing_torch()`: 7D aerospace (RK4 + soft constraints)
+- **Key Innovation**: Differentiable angle wrapping using `atan2(sin(θ), cos(θ))` instead of modulo
+- **Key Innovation**: Soft constraints via `soft_clamp()` for smooth gradients at boundaries
+- Integrated into `supervised_trainer.py` with dispatcher for all problems
+- Added `get_torch_dynamics()` methods to all 4 environment classes
+- Deprecated old inline implementations with migration guidance
+- **Implementation commit**: 6106314
+- **Multi-problem support status**: ALL 4 problems now ready for process supervision!
+  - ✅ Van der Pol (was working, now uses centralized module)
+  - ✅ Double Integrator (NEW - exact integration)
+  - ✅ Pendulum (NEW - differentiable wrapping)
+  - ✅ Rocket Landing (NEW - soft constraints)
+- **Implementation time**: ~6 hours (matched estimate)
+- **Complexity breakdown**:
+  - Double Integrator: EASY (0.5 hr) - linear, closed-form
+  - Pendulum: MODERATE (2 hr) - angle wrapping challenge solved
+  - Rocket Landing: HARD (3-4 hr) - 7D state, constraints, RK4
+- **Next steps**: Unit tests, gradient flow validation, integration testing
 
 ### Future Entries
 [To be added as work progresses]
