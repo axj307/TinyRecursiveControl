@@ -3,8 +3,13 @@
 **Date Started**: 2025-11-14
 **Date Merged**: 2025-11-14
 **Latest Update**: 2025-11-15
-**Status**: Phase 3 Complete - Multi-Problem Support Validated ✅
+**Status**: Phase 3 Complete - 3 Problems Validated (Pendulum Removed) ✅
 **Branch**: `feature/trm-process-supervision` → `main` (merged at commit 58a79ef)
+
+**⚠️ NOTE (2025-11-15)**: Pendulum environment removed (commit a7dc4d0). Focusing on 3 problems:
+- ✅ Double Integrator
+- ✅ Van der Pol
+- ✅ Rocket Landing
 
 ---
 
@@ -264,49 +269,53 @@ Training Results:
 Test Results: 1/1 passed ✓
 
 ==========================================
-✓ ALL 22 TESTS PASSED
+✓ ALL 18 TESTS PASSED (updated 2025-11-15)
 ==========================================
 ```
 
-**Status**: ✅ PHASE 3 COMPLETE - All dynamics validated and working
+**Status**: ✅ PHASE 3 COMPLETE - 3 dynamics validated and working
 
 **Test Files**:
-- `tests/test_torch_dynamics.py` (13 tests, ~400 lines)
-- `tests/test_gradient_flow.py` (8 tests, ~250 lines)
+- `tests/test_torch_dynamics.py` (11 tests, ~350 lines)
+- `tests/test_gradient_flow.py` (7 tests, ~230 lines)
 - `tests/test_process_supervision_quick.py` (1 integration test, ~220 lines)
 - `tests/run_all_tests.sh` (run all)
 - `tests/README.md` (comprehensive documentation)
 
 **Key Achievements**:
-1. **All 4 Dynamics Implemented**:
+1. **3 Dynamics Implemented and Validated**:
    - ✅ Double Integrator: Exact discrete-time integration (zero numerical error)
    - ✅ Van der Pol: RK4 integration for nonlinear oscillator
-   - ✅ Pendulum: Euler + differentiable angle wrapping (atan2-based)
    - ✅ Rocket Landing: RK4 + soft constraints (soft_clamp with softplus)
+   - ~~Pendulum~~ (removed 2025-11-15)
 
 2. **Gradient Flow Validated**:
-   - ✅ All dynamics are fully differentiable
+   - ✅ All 3 dynamics are fully differentiable
    - ✅ Gradients flow end-to-end: model → controls → dynamics → loss
    - ✅ No NaN/Inf issues
    - ✅ Process supervision loss works with all dynamics
 
 3. **Integration Testing Successful**:
    - ✅ 5-epoch training runs without crashes
-   - ✅ Loss decreases (~57% improvement)
+   - ✅ Loss decreases (~51% improvement latest run)
    - ✅ Model save/load works
    - ✅ Training is stable (no gradient explosion/vanishing)
 
 4. **Critical Innovations**:
-   - **Differentiable angle wrapping**: `atan2(sin(θ), cos(θ))` for pendulum
    - **Soft constraints**: `soft_clamp(x, min_val)` using softplus for rocket
    - **Modular design**: Standalone `torch_dynamics.py` module
-   - **Comprehensive testing**: 22 tests covering correctness, gradients, integration
+   - **Comprehensive testing**: 18 tests covering correctness, gradients, integration
 
 **Bugs Fixed During Testing**:
 - Test parameter mismatches (mu_base vs mu, mass vs m)
 - Tensor reshape syntax error
 - Process supervision function signature mismatch
 - Model factory method argument errors
+
+**Refactoring (2025-11-15)**:
+- Removed pendulum environment to focus on 3 core problems
+- Updated all tests and documentation
+- All 18 tests passing after removal
 
 **Next Steps**: Phase 4 (Full experiments on all problems) or Phase 2 (investigate negative loss)
 
