@@ -4,16 +4,15 @@ Comprehensive test suite for validating the PyTorch dynamics implementation for 
 
 ## Overview
 
-These tests validate that all 4 PyTorch dynamics simulators work correctly and support process supervision training:
+These tests validate that all 3 PyTorch dynamics simulators work correctly and support process supervision training:
 
 1. **Double Integrator** - Linear dynamics (exact integration)
 2. **Van der Pol** - Nonlinear oscillator (RK4 integration)
-3. **Pendulum** - Nonlinear with angle wrapping (Euler + atan2)
-4. **Rocket Landing** - 7D aerospace dynamics (RK4 + soft constraints)
+3. **Rocket Landing** - 7D aerospace dynamics (RK4 + soft constraints)
 
 ## Test Files
 
-### 1. `test_torch_dynamics.py` (~400 lines, 13 tests)
+### 1. `test_torch_dynamics.py` (~350 lines, 11 tests)
 
 **Purpose**: Unit tests for dynamics correctness and differentiability
 
@@ -24,8 +23,6 @@ These tests validate that all 4 PyTorch dynamics simulators work correctly and s
 - ✅ Double Integrator gradient flow
 - ✅ Van der Pol correctness (RK4 accuracy)
 - ✅ Van der Pol gradients through RK4
-- ✅ Pendulum correctness
-- ✅ Pendulum angle wrapping differentiability (atan2-based)
 - ✅ Rocket Landing correctness
 - ✅ Rocket Landing soft constraints
 - ✅ Device compatibility (CPU/CUDA)
@@ -42,7 +39,7 @@ python tests/test_torch_dynamics.py
 
 ---
 
-### 2. `test_gradient_flow.py` (~250 lines, 8 tests)
+### 2. `test_gradient_flow.py` (~230 lines, 7 tests)
 
 **Purpose**: Validate gradient flow for process supervision training
 
@@ -51,7 +48,6 @@ python tests/test_torch_dynamics.py
 - ✅ Process supervision loss gradient flow
 - ✅ Double Integrator gradient flow
 - ✅ Van der Pol gradient flow
-- ✅ Pendulum gradient flow
 - ✅ Rocket Landing gradient flow
 - ✅ Gradient stability for long horizons
 - ✅ Gradient magnitudes are reasonable
@@ -186,10 +182,6 @@ Testing Van der Pol...
 ✓ Van der Pol correctness
 ✓ Van der Pol gradients (RK4)
 
-Testing Pendulum...
-✓ Pendulum correctness
-✓ Pendulum angle wrapping differentiability
-
 Testing Rocket Landing...
 ✓ Rocket Landing correctness
 ✓ Rocket Landing soft constraints
@@ -200,7 +192,7 @@ Testing Device/Dtype/Batching...
 ✓ Batching behavior
 
 ======================================================================
-Test Results: 13/13 passed
+Test Results: 11/11 passed
 ======================================================================
 ```
 
@@ -211,7 +203,7 @@ Test Results: 13/13 passed
   Error: Tensor contains NaN or Inf
 
 ======================================================================
-Test Results: 12/13 passed
+Test Results: 10/11 passed
 
 Failed tests (1):
   - Van der Pol gradients (RK4)
@@ -228,7 +220,6 @@ Failed tests (1):
 **Correctness**:
 - Double Integrator: max error < 1e-8 (exact integration)
 - Van der Pol: max error < 1e-4 (RK4 approximation)
-- Pendulum: max error < 1e-3 (Euler integration)
 - Rocket Landing: max error < 1e-3 (RK4 with constraints)
 
 **Gradients**:
@@ -246,7 +237,7 @@ Failed tests (1):
 - Gradients flow from loss back to all model parameters
 - No gradient explosion (norm < 1e3)
 - No gradient vanishing (norm > 1e-6)
-- All 4 dynamics support gradient backpropagation
+- All 3 dynamics support gradient backpropagation
 - Process supervision loss computes correctly
 
 ### Integration Test (`test_process_supervision_quick.py`)

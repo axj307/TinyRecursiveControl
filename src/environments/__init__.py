@@ -12,7 +12,6 @@ Usage:
 
 from .base import BaseControlProblem
 from .double_integrator import DoubleIntegrator
-from .pendulum import Pendulum
 from .vanderpol import VanderpolOscillator
 from .rocket_landing import RocketLanding
 
@@ -23,7 +22,6 @@ from .rocket_landing import RocketLanding
 
 PROBLEM_REGISTRY = {
     "double_integrator": DoubleIntegrator,
-    "pendulum": Pendulum,
     "vanderpol": VanderpolOscillator,
     "rocket_landing": RocketLanding,
 }
@@ -169,7 +167,6 @@ __all__ = [
 
     # Problem classes
     "DoubleIntegrator",
-    "Pendulum",
     "VanderpolOscillator",
     "RocketLanding",
 

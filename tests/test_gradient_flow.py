@@ -23,7 +23,6 @@ from src.models import TinyRecursiveControl
 from src.environments.torch_dynamics import (
     simulate_double_integrator_torch,
     simulate_vanderpol_torch,
-    simulate_pendulum_torch,
     simulate_rocket_landing_torch
 )
 from src.training.process_supervision import compute_process_supervision_loss
@@ -234,21 +233,6 @@ def test_vanderpol_gradient_flow(runner):
         runner.assert_finite(param.grad, "Van der Pol gradients should be finite")
 
 
-def test_pendulum_gradient_flow(runner):
-    """Test gradient flow through pendulum dynamics"""
-    control_net = nn.Linear(2, 50)
-
-    initial_state = torch.randn(4, 2)
-    controls = control_net(initial_state).view(4, 50, 1)
-
-    states = simulate_pendulum_torch(initial_state, controls, dt=0.05)
-    loss = (states[:, -1, 0]**2).sum()  # Minimize angle
-    loss.backward()
-
-    for param in control_net.parameters():
-        runner.assert_finite(param.grad, "Pendulum gradients should be finite")
-
-
 def test_rocket_landing_gradient_flow(runner):
     """Test gradient flow through rocket landing dynamics"""
     control_net = nn.Linear(7, 60)  # 20 timesteps × 3D control
@@ -352,7 +336,6 @@ def main():
     print("\nTesting Multi-Problem Gradient Flow...")
     runner.run_test(lambda: test_double_integrator_gradient_flow(runner), "Double Integrator gradient flow")
     runner.run_test(lambda: test_vanderpol_gradient_flow(runner), "Van der Pol gradient flow")
-    runner.run_test(lambda: test_pendulum_gradient_flow(runner), "Pendulum gradient flow")
     runner.run_test(lambda: test_rocket_landing_gradient_flow(runner), "Rocket Landing gradient flow")
 
     print("\nTesting Gradient Stability...")

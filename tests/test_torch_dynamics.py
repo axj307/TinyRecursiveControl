@@ -22,10 +22,9 @@ from src.environments.torch_dynamics import (
     soft_clamp,
     simulate_double_integrator_torch,
     simulate_vanderpol_torch,
-    simulate_pendulum_torch,
     simulate_rocket_landing_torch
 )
-from src.environments import DoubleIntegrator, VanderpolOscillator, Pendulum, RocketLanding
+from src.environments import DoubleIntegrator, VanderpolOscillator, RocketLanding
 
 
 class TestRunner:
@@ -241,73 +240,7 @@ def test_vanderpol_gradients(runner):
 
 
 # =============================================================================
-# Test 6-7: Pendulum
-# =============================================================================
-
-def test_pendulum_correctness(runner):
-    """Test pendulum against NumPy implementation"""
-    problem = Pendulum(mass=1.0, length=1.0, gravity=9.81, friction=0.1, dt=0.05, horizon=50)
-
-    # Test data - start near upside down
-    initial_state = torch.tensor([[2.5, 0.0]])  # angle, angular_velocity
-    controls = torch.zeros(1, 50, 1)  # No torque
-
-    # PyTorch simulation
-    states_torch = simulate_pendulum_torch(
-        initial_state, controls,
-        m=problem.m, l=problem.l, g=problem.g, b=problem.b, I=problem.I, dt=problem.dt
-    )
-
-    # NumPy simulation
-    state_np = initial_state[0].numpy()
-    states_np = [state_np.copy()]
-
-    for t in range(50):
-        control_np = controls[0, t].numpy()
-        state_np = problem.simulate_step(state_np, control_np)
-        states_np.append(state_np.copy())
-
-    states_np = np.array(states_np)
-
-    # Compare (Euler integration, moderate tolerance)
-    runner.assert_close(
-        states_torch[0].numpy(),
-        states_np,
-        rtol=1e-3,
-        atol=1e-4,
-        msg="Pendulum PyTorch vs NumPy"
-    )
-
-
-def test_pendulum_angle_wrapping_differentiability(runner):
-    """Test that atan2 angle wrapping maintains smooth gradients"""
-    # Test gradient at wrapping boundary
-    initial_state = torch.tensor([[3.0, 0.0]], requires_grad=True)  # Near π
-    controls = torch.zeros(1, 20, 1, requires_grad=True)
-
-    # Forward pass
-    states = simulate_pendulum_torch(initial_state, controls, dt=0.05)
-
-    # Loss based on final angle
-    loss = (states[0, -1, 0])**2
-
-    # Backward pass
-    loss.backward()
-
-    # Gradients should be finite even when angle wraps
-    runner.assert_finite(initial_state.grad, "Gradient should be finite at wrap boundary")
-    runner.assert_finite(controls.grad, "Controls gradient should be finite")
-
-    # Check that angle stayed within [-π, π]
-    all_angles = states[0, :, 0]
-    runner.assert_true(
-        (all_angles >= -np.pi - 0.01).all() and (all_angles <= np.pi + 0.01).all(),
-        "Angles should stay within [-π, π]"
-    )
-
-
-# =============================================================================
-# Test 8-9: Rocket Landing
+# Test 6-7: Rocket Landing
 # =============================================================================
 
 def test_rocket_landing_correctness(runner):
@@ -457,10 +390,6 @@ def main():
     print("\nTesting Van der Pol...")
     runner.run_test(lambda: test_vanderpol_correctness(runner), "Van der Pol correctness")
     runner.run_test(lambda: test_vanderpol_gradients(runner), "Van der Pol gradients (RK4)")
-
-    print("\nTesting Pendulum...")
-    runner.run_test(lambda: test_pendulum_correctness(runner), "Pendulum correctness")
-    runner.run_test(lambda: test_pendulum_angle_wrapping_differentiability(runner), "Pendulum angle wrapping differentiability")
 
     print("\nTesting Rocket Landing...")
     runner.run_test(lambda: test_rocket_landing_correctness(runner), "Rocket Landing correctness")
