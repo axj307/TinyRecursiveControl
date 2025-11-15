@@ -35,6 +35,7 @@ from src.models import TinyRecursiveControl
 from src.training.supervised_trainer import load_dataset, create_data_loaders, simulate_vanderpol_torch
 from src.evaluation.refinement_evaluator import RefinementEvaluator
 from src.environments import get_problem
+from src.environments.torch_dynamics import simulate_double_integrator_torch, simulate_vanderpol_torch as simulate_vdp_torch
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -44,9 +45,17 @@ def create_dynamics_function(problem):
     """Create differentiable dynamics function."""
     problem_name = problem.__class__.__name__
 
-    if problem_name == "VanderpolOscillator":
+    if problem_name == "DoubleIntegrator":
         def dynamics_fn(initial_state, controls):
-            return simulate_vanderpol_torch(
+            return simulate_double_integrator_torch(
+                initial_state=initial_state,
+                controls=controls,
+                dt=problem.dt,
+            )
+        return dynamics_fn
+    elif problem_name == "VanderpolOscillator":
+        def dynamics_fn(initial_state, controls):
+            return simulate_vdp_torch(
                 initial_state=initial_state,
                 controls=controls,
                 mu=problem.mu,
@@ -56,7 +65,8 @@ def create_dynamics_function(problem):
     else:
         raise NotImplementedError(
             f"Analysis requires differentiable dynamics. "
-            f"Problem '{problem_name}' not supported yet."
+            f"Problem '{problem_name}' not supported yet. "
+            f"Currently supported: DoubleIntegrator, VanderpolOscillator"
         )
 
 
