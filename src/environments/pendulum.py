@@ -324,3 +324,35 @@ class Pendulum(BaseControlProblem):
         }
 
         return info
+
+    def get_torch_dynamics(self):
+        """
+        Get PyTorch-compatible differentiable dynamics simulator.
+
+        Returns a callable dynamics function pre-configured with problem parameters.
+        This function can be used for process supervision training where gradients
+        must flow through trajectory simulations.
+
+        Uses differentiable angle wrapping (atan2) to maintain smooth gradients
+        at the wrapping boundary [-π, π].
+
+        Returns:
+            Callable with signature: (initial_state, controls) -> states
+            - initial_state: [batch, 2] or [2] - [angle, angular_velocity]
+            - controls: [batch, horizon, 1] or [horizon, 1] - [torque]
+            - states: [batch, horizon+1, 2] or [horizon+1, 2]
+
+        Example:
+            >>> problem = Pendulum(m=1.0, l=1.0, g=9.81)
+            >>> dynamics_fn = problem.get_torch_dynamics()
+            >>> import torch
+            >>> states = dynamics_fn(
+            ...     torch.tensor([[3.0, 0.0]]),  # Near upside-down
+            ...     torch.zeros(1, 50, 1)
+            ... )
+        """
+        from src.environments.torch_dynamics import simulate_pendulum_torch
+        return lambda initial_state, controls: simulate_pendulum_torch(
+            initial_state, controls,
+            m=self.m, l=self.l, g=self.g, b=self.b, I=self.I, dt=self.dt
+        )

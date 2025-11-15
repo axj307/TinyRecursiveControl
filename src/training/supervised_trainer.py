@@ -19,6 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.models import TinyRecursiveControl, TRCConfig
 from src.training.utils import ModelCheckpoint, EarlyStopping, TrainingStats, get_lr_scheduler, count_parameters
+from src.environments.torch_dynamics import (
+    simulate_double_integrator_torch,
+    simulate_vanderpol_torch,
+    simulate_pendulum_torch,
+    simulate_rocket_landing_torch
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -91,7 +97,8 @@ def simulate_double_integrator_trajectory(initial_state, controls, dt=0.33):
     """
     Simulate double integrator trajectory from initial state and control sequence.
 
-    DEPRECATED: Use simulate_trajectory() with a problem instance for problem-agnostic simulation.
+    DEPRECATED: This function is kept for backward compatibility only.
+    Use src.environments.torch_dynamics.simulate_double_integrator_torch() instead.
 
     Args:
         initial_state: Initial state [batch_size, 2] or [2]
@@ -101,6 +108,8 @@ def simulate_double_integrator_trajectory(initial_state, controls, dt=0.33):
     Returns:
         states: State trajectory [batch_size, horizon+1, 2] or [horizon+1, 2]
     """
+    logger.warning("simulate_double_integrator_trajectory is deprecated. "
+                  "Use src.environments.torch_dynamics.simulate_double_integrator_torch() instead.")
     # Handle both batched and single trajectories
     if len(initial_state.shape) == 1:
         # Single trajectory
@@ -142,6 +151,9 @@ def simulate_vanderpol_torch(initial_state, controls, mu=1.0, dt=0.05):
     """
     Simulate Van der Pol oscillator in PyTorch (differentiable, GPU-accelerated).
 
+    DEPRECATED: This function is kept for backward compatibility only.
+    Use src.environments.torch_dynamics.simulate_vanderpol_torch() instead.
+
     Dynamics:
         dx/dt = v
         dv/dt = mu*(1-x²)*v - x + u
@@ -157,6 +169,8 @@ def simulate_vanderpol_torch(initial_state, controls, mu=1.0, dt=0.05):
     Returns:
         states: State trajectory [batch_size, horizon+1, 2] or [horizon+1, 2]
     """
+    logger.warning("simulate_vanderpol_torch in supervised_trainer is deprecated. "
+                  "Use src.environments.torch_dynamics.simulate_vanderpol_torch() instead.")
     # Handle both batched and single trajectories
     if len(initial_state.shape) == 1:
         initial_state = initial_state.unsqueeze(0)
@@ -304,15 +318,36 @@ def train_epoch(model, train_loader, optimizer, device, trajectory_loss_weight=0
 
         # Trajectory loss (if enabled and states_gt available)
         if trajectory_loss_weight > 0.0 and states_gt is not None:
-            if problem is not None and problem.__class__.__name__ == 'VanderpolOscillator':
-                # Use differentiable PyTorch simulation for Van der Pol (GPU-accelerated, gradients flow!)
-                states_pred = simulate_vanderpol_torch(initial, controls_pred, mu=problem.mu, dt=problem.dt)
-            elif problem is None:
-                # Fallback to double integrator (deprecated)
-                states_pred = simulate_double_integrator_trajectory(initial, controls_pred, dt=dt)
+            # Use differentiable PyTorch simulation (GPU-accelerated, gradients flow!)
+            if problem is not None:
+                problem_name = problem.__class__.__name__
+
+                if problem_name == 'VanderpolOscillator':
+                    states_pred = simulate_vanderpol_torch(
+                        initial, controls_pred, mu=problem.mu, dt=problem.dt
+                    )
+                elif problem_name == 'DoubleIntegrator':
+                    states_pred = simulate_double_integrator_torch(
+                        initial, controls_pred, dt=problem.dt
+                    )
+                elif problem_name == 'Pendulum':
+                    states_pred = simulate_pendulum_torch(
+                        initial, controls_pred,
+                        m=problem.m, l=problem.l, g=problem.g, b=problem.b,
+                        I=problem.I, dt=problem.dt
+                    )
+                elif problem_name == 'RocketLanding':
+                    states_pred = simulate_rocket_landing_torch(
+                        initial, controls_pred,
+                        Isp=problem.Isp, g0=problem.g0, dt=problem.dt
+                    )
+                else:
+                    # Fallback to non-differentiable simulation
+                    logger.warning(f"No PyTorch dynamics for {problem_name}, using non-differentiable simulation")
+                    states_pred = simulate_trajectory(problem, initial, controls_pred)
             else:
-                # Other problems: use non-differentiable simulation (won't help learning but won't break)
-                states_pred = simulate_trajectory(problem, initial, controls_pred)
+                # Fallback to double integrator (backward compatibility)
+                states_pred = simulate_double_integrator_torch(initial, controls_pred, dt=dt)
 
             # Trajectory MSE
             trajectory_loss = F.mse_loss(states_pred, states_gt)

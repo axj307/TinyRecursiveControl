@@ -266,3 +266,31 @@ class DoubleIntegrator(BaseControlProblem):
         acc = (pos_error - initial_state[1] * total_time - vel_error * total_time / 2) / (0.5 * total_time**2)
 
         return np.array([acc])
+
+    def get_torch_dynamics(self):
+        """
+        Get PyTorch-compatible differentiable dynamics simulator.
+
+        Returns a callable dynamics function pre-configured with problem parameters.
+        This function can be used for process supervision training where gradients
+        must flow through trajectory simulations.
+
+        Returns:
+            Callable with signature: (initial_state, controls) -> states
+            - initial_state: [batch, 2] or [2]
+            - controls: [batch, horizon, 1] or [horizon, 1]
+            - states: [batch, horizon+1, 2] or [horizon+1, 2]
+
+        Example:
+            >>> problem = DoubleIntegrator()
+            >>> dynamics_fn = problem.get_torch_dynamics()
+            >>> import torch
+            >>> states = dynamics_fn(
+            ...     torch.tensor([[1.0, 0.0]]),
+            ...     torch.zeros(1, 10, 1)
+            ... )
+        """
+        from src.environments.torch_dynamics import simulate_double_integrator_torch
+        return lambda initial_state, controls: simulate_double_integrator_torch(
+            initial_state, controls, dt=self.dt
+        )

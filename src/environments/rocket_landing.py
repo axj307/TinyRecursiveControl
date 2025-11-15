@@ -407,3 +407,33 @@ class RocketLanding(BaseControlProblem):
         velocity_ok = velocity_mag < velocity_threshold
 
         return altitude_ok and position_ok and velocity_ok
+
+    def get_torch_dynamics(self):
+        """
+        Get PyTorch-compatible differentiable dynamics simulator.
+
+        Returns a callable dynamics function pre-configured with problem parameters.
+        This function can be used for process supervision training where gradients
+        must flow through trajectory simulations.
+
+        Uses RK4 integration for accuracy and soft constraints to maintain
+        differentiability at boundaries (altitude >= 0, mass >= 100 kg).
+
+        Returns:
+            Callable with signature: (initial_state, controls) -> states
+            - initial_state: [batch, 7] or [7] - [x, y, z, vx, vy, vz, mass]
+            - controls: [batch, horizon, 3] or [horizon, 3] - [Tx, Ty, Tz]
+            - states: [batch, horizon+1, 7] or [horizon+1, 7]
+
+        Example:
+            >>> problem = RocketLanding(Isp=300.0)
+            >>> dynamics_fn = problem.get_torch_dynamics()
+            >>> import torch
+            >>> initial = torch.tensor([[0., 0., 1000., 0., 0., -50., 1000.]])
+            >>> controls = torch.ones(1, 50, 3) * torch.tensor([0., 0., 10000.])
+            >>> states = dynamics_fn(initial, controls)
+        """
+        from src.environments.torch_dynamics import simulate_rocket_landing_torch
+        return lambda initial_state, controls: simulate_rocket_landing_torch(
+            initial_state, controls, Isp=self.Isp, g0=self.g0, dt=self.dt
+        )
