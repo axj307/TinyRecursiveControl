@@ -156,36 +156,72 @@ if [ ${EVAL_EXIT_CODE} -ne 0 ]; then
 fi
 
 # ============================================================================
-# 6. Generate Visualizations
+# 6. Generate Basic Trajectory Visualizations
 # ============================================================================
 echo "========================================================================"
-echo "Generating Visualizations"
+echo "Generating Basic Trajectory Visualizations"
 echo "========================================================================"
-echo "Start visualization: $(date)"
+echo "Start basic visualization: $(date)"
 
 VIZ_DIR="${OUTPUT_DIR}/visualizations"
 mkdir -p "${VIZ_DIR}"
+
+python visualize_trajectories.py \
+    --problem "${PROBLEM}" \
+    --checkpoint "${CHECKPOINT}" \
+    --test_data "${TEST_DATA}" \
+    --output_dir "${VIZ_DIR}" \
+    --num_examples 6
+
+BASIC_VIZ_EXIT_CODE=$?
+echo "Basic visualization exit code: ${BASIC_VIZ_EXIT_CODE}"
+echo "End basic visualization: $(date)"
+echo ""
+
+if [ ${BASIC_VIZ_EXIT_CODE} -ne 0 ]; then
+    echo "WARNING: Basic visualization generation failed with exit code ${BASIC_VIZ_EXIT_CODE}"
+fi
+
+# ============================================================================
+# 7. Generate Advanced Planning Analysis
+# ============================================================================
+echo "========================================================================"
+echo "Generating Advanced Planning Analysis"
+echo "========================================================================"
+echo "Start planning analysis: $(date)"
+
+PLANNING_DIR="${OUTPUT_DIR}/planning_analysis"
+mkdir -p "${PLANNING_DIR}"
+
+# Copy README documentation from TRM worktree
+TRM_README="/orcd/home/002/amitjain/project/TinyRecursiveControl_worktrees/trm-process-supervision/outputs/vanderpol_ps_5715793_20251030_120734/planning_analysis/README.md"
+if [ -f "${TRM_README}" ]; then
+    cp "${TRM_README}" "${PLANNING_DIR}/README.md"
+    echo "Copied planning analysis README from TRM worktree"
+else
+    echo "WARNING: Could not find TRM README at ${TRM_README}"
+fi
 
 # Full planning visualizations (11+ plots)
 python scripts/visualize_planning.py \
     --checkpoint "${CHECKPOINT}" \
     --test_data "${TEST_DATA}" \
     --problem "${PROBLEM}" \
-    --output_dir "${VIZ_DIR}" \
+    --output_dir "${PLANNING_DIR}" \
     --num_samples 100 \
     --level all
 
-VIZ_EXIT_CODE=$?
-echo "Visualization exit code: ${VIZ_EXIT_CODE}"
-echo "End visualization: $(date)"
+PLANNING_EXIT_CODE=$?
+echo "Planning analysis exit code: ${PLANNING_EXIT_CODE}"
+echo "End planning analysis: $(date)"
 echo ""
 
-if [ ${VIZ_EXIT_CODE} -ne 0 ]; then
-    echo "WARNING: Visualization generation failed with exit code ${VIZ_EXIT_CODE}"
+if [ ${PLANNING_EXIT_CODE} -ne 0 ]; then
+    echo "WARNING: Planning analysis generation failed with exit code ${PLANNING_EXIT_CODE}"
 fi
 
 # ============================================================================
-# 7. Generate Summary Report
+# 8. Generate Summary Report
 # ============================================================================
 echo "========================================================================"
 echo "Generating Summary Report"
@@ -216,7 +252,8 @@ cat > "${REPORT}" << EOF
 ## Outputs
 - **Checkpoint**: ${CHECKPOINT}
 - **Evaluation**: ${EVAL_OUTPUT}
-- **Visualizations**: ${VIZ_DIR}
+- **Basic Visualizations**: ${VIZ_DIR}
+- **Planning Analysis**: ${PLANNING_DIR}
 
 ## Training Metrics
 See: \`training/training_stats.json\`
@@ -224,8 +261,16 @@ See: \`training/training_stats.json\`
 ## Test Metrics
 See: \`evaluation_results.json\`
 
-## Visualizations
+## Basic Trajectory Visualizations
 See: \`visualizations/\` directory
+- detailed_example.png
+- error_distribution.png
+- trajectories_comparison.png
+
+## Advanced Planning Analysis
+See: \`planning_analysis/\` directory
+- README.md (comprehensive documentation)
+- 11 advanced interpretability plots
 
 Generated on: $(date)
 EOF
@@ -234,7 +279,7 @@ echo "Summary report saved to: ${REPORT}"
 echo ""
 
 # ============================================================================
-# 8. Cleanup and Final Summary
+# 9. Cleanup and Final Summary
 # ============================================================================
 echo "========================================================================"
 echo "Experiment Complete"

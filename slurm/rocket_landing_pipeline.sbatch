@@ -519,11 +519,100 @@ echo "  Results: $ANALYSIS_OUTPUT"
 echo ""
 
 # =============================================================================
-# PHASE 5: FINAL REPORT
+# PHASE 5: BASIC TRAJECTORY VISUALIZATIONS
 # =============================================================================
 
 echo "========================================================================"
-echo "PHASE 5: Final Report Generation"
+echo "PHASE 5: Basic Trajectory Visualizations"
+echo "========================================================================"
+echo ""
+
+VIZ_DIR="$OUTPUT_DIR/visualizations"
+mkdir -p "$VIZ_DIR"
+
+echo "Generating basic trajectory visualizations..."
+echo "  Problem: $PROBLEM"
+echo "  Checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
+echo "  Test data: $TEST_DATA"
+echo "  Output: $VIZ_DIR"
+echo ""
+
+python visualize_trajectories.py \
+    --problem "$PROBLEM" \
+    --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
+    --test_data "$TEST_DATA" \
+    --output_dir "$VIZ_DIR" \
+    --num_examples 6
+
+BASIC_VIZ_EXIT_CODE=$?
+
+if [ $BASIC_VIZ_EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "WARNING: Basic visualization generation failed with exit code $BASIC_VIZ_EXIT_CODE"
+    echo "Continuing with pipeline..."
+else
+    echo ""
+    echo "✓ Basic visualizations complete!"
+    echo "  Results: $VIZ_DIR"
+fi
+
+echo ""
+
+# =============================================================================
+# PHASE 6: ADVANCED PLANNING ANALYSIS
+# =============================================================================
+
+echo "========================================================================"
+echo "PHASE 6: Advanced Planning Analysis"
+echo "========================================================================"
+echo ""
+
+PLANNING_DIR="$OUTPUT_DIR/planning_analysis"
+mkdir -p "$PLANNING_DIR"
+
+# Copy README documentation from TRM worktree
+TRM_README="/orcd/home/002/amitjain/project/TinyRecursiveControl_worktrees/trm-process-supervision/outputs/vanderpol_ps_5715793_20251030_120734/planning_analysis/README.md"
+if [ -f "$TRM_README" ]; then
+    cp "$TRM_README" "$PLANNING_DIR/README.md"
+    echo "Copied planning analysis README from TRM worktree"
+fi
+
+echo "Generating advanced planning analysis..."
+echo "  Problem: $PROBLEM"
+echo "  Checkpoint: $TRAIN_OUTPUT_DIR/best_model.pt"
+echo "  Test data: $TEST_DATA"
+echo "  Output: $PLANNING_DIR"
+echo ""
+
+python scripts/visualize_planning.py \
+    --checkpoint "$TRAIN_OUTPUT_DIR/best_model.pt" \
+    --test_data "$TEST_DATA" \
+    --problem "$PROBLEM" \
+    --output_dir "$PLANNING_DIR" \
+    --num_samples 100 \
+    --level all
+
+PLANNING_EXIT_CODE=$?
+
+if [ $PLANNING_EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "WARNING: Planning analysis generation failed with exit code $PLANNING_EXIT_CODE"
+    echo "Continuing with pipeline..."
+else
+    echo ""
+    echo "✓ Planning analysis complete!"
+    echo "  Results: $PLANNING_DIR"
+    echo "  Generated 11 advanced interpretability plots"
+fi
+
+echo ""
+
+# =============================================================================
+# PHASE 7: FINAL REPORT
+# =============================================================================
+
+echo "========================================================================"
+echo "PHASE 7: Final Report Generation"
 echo "========================================================================"
 echo ""
 
