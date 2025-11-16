@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=phase4_comparison
-#SBATCH --output=slurm_logs/phase4_comparison_%j.out
-#SBATCH --error=slurm_logs/phase4_comparison_%j.err
+#SBATCH --job-name=comparison
+#SBATCH --output=slurm_logs/comparison_%j.out
+#SBATCH --error=slurm_logs/comparison_%j.err
 #SBATCH --time=02:00:00
 #SBATCH --partition=pi_linaresr
 #SBATCH --ntasks=1
@@ -9,7 +9,7 @@
 #SBATCH --mem=32G
 
 # ============================================================================
-# Phase 4: BC vs PS Comparison & Analysis
+# Core Experiment: BC vs PS Comparison & Analysis
 # ============================================================================
 # This script runs AFTER all 4 training experiments complete.
 # It generates comprehensive comparison figures and analysis reports.
@@ -20,7 +20,7 @@
 set -e  # Exit on any error
 
 echo "========================================================================"
-echo "Phase 4: BC vs PS Comparison Analysis"
+echo "Core Experiment: BC vs PS Comparison Analysis"
 echo "========================================================================"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Start time: $(date)"
@@ -46,7 +46,7 @@ echo ""
 # 2. Configuration
 # ============================================================================
 EXPERIMENTS_DIR="outputs/phase4"
-COMPARISON_OUTPUT="outputs/phase4/comparison"
+COMPARISON_OUTPUT="outputs/experiments/comparison"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 echo "Configuration:"

@@ -3,7 +3,7 @@
 # Master Launch Script: All Paper Experiments
 # ============================================================================
 # This script submits ALL experiments needed for the paper:
-#   1. Phase 4: BC vs PS on 2 problems (4 jobs)
+#   1. Core Experiments: BC vs PS on 2 problems (4 jobs)
 #   2. Robustness: Multi-seed study (10 jobs)
 #   3. Ablation: Lambda sweep (5 jobs)
 #   4. Comparison: Analysis after all complete (1 job)
@@ -30,32 +30,32 @@ echo "Project root: ${PROJECT_ROOT}"
 echo ""
 
 # Create necessary directories
-mkdir -p slurm_logs outputs/phase4 outputs/robustness outputs/ablation_lambda
+mkdir -p slurm_logs outputs/experiments outputs/robustness outputs/ablation_lambda
 
 # ============================================================================
-# Part 1: Phase 4 - Main BC vs PS Comparison (4 jobs)
+# Part 1: Core Experiments - BC vs PS Comparison (4 jobs)
 # ============================================================================
 echo "========================================================================"
-echo "Part 1: Phase 4 - BC vs PS Comparison"
+echo "Part 1: Core Experiments - BC vs PS Comparison"
 echo "========================================================================"
 echo ""
 
 # Double Integrator
-JOB_DI_BC=$(sbatch --parsable slurm/phase4_di_bc.sbatch)
+JOB_DI_BC=$(sbatch --parsable slurm/01_core_experiments/double_integrator_bc.sbatch)
 echo "✓ Double Integrator BC:  Job ID ${JOB_DI_BC}"
 
-JOB_DI_PS=$(sbatch --parsable slurm/phase4_di_ps.sbatch)
+JOB_DI_PS=$(sbatch --parsable slurm/01_core_experiments/double_integrator_ps.sbatch)
 echo "✓ Double Integrator PS:  Job ID ${JOB_DI_PS}"
 
 # Van der Pol
-JOB_VDP_BC=$(sbatch --parsable slurm/phase4_vdp_bc.sbatch)
+JOB_VDP_BC=$(sbatch --parsable slurm/01_core_experiments/vanderpol_bc.sbatch)
 echo "✓ Van der Pol BC:        Job ID ${JOB_VDP_BC}"
 
-JOB_VDP_PS=$(sbatch --parsable slurm/phase4_vdp_ps.sbatch)
+JOB_VDP_PS=$(sbatch --parsable slurm/01_core_experiments/vanderpol_ps.sbatch)
 echo "✓ Van der Pol PS:        Job ID ${JOB_VDP_PS}"
 
 echo ""
-echo "Phase 4 jobs submitted (4 total)"
+echo "Core experiment jobs submitted (4 total)"
 echo ""
 
 # ============================================================================
@@ -67,11 +67,11 @@ echo "========================================================================"
 echo ""
 
 # BC with 5 seeds (job array)
-JOB_ROBUST_BC=$(sbatch --parsable slurm/robustness_vdp_bc_multiseed.sbatch)
+JOB_ROBUST_BC=$(sbatch --parsable slurm/03_robustness_multiseed/vanderpol_bc_multiseed.sbatch)
 echo "✓ Robustness BC (5 seeds): Job ID ${JOB_ROBUST_BC} (array 0-4)"
 
 # PS with 5 seeds (job array)
-JOB_ROBUST_PS=$(sbatch --parsable slurm/robustness_vdp_ps_multiseed.sbatch)
+JOB_ROBUST_PS=$(sbatch --parsable slurm/03_robustness_multiseed/vanderpol_ps_multiseed.sbatch)
 echo "✓ Robustness PS (5 seeds): Job ID ${JOB_ROBUST_PS} (array 0-4)"
 
 echo ""
@@ -87,7 +87,7 @@ echo "========================================================================"
 echo ""
 
 # Lambda ablation (job array)
-JOB_LAMBDA=$(sbatch --parsable slurm/ablation_lambda.sbatch)
+JOB_LAMBDA=$(sbatch --parsable slurm/02_ablation_lambda/lambda_sweep.sbatch)
 echo "✓ Lambda Ablation (λ ∈ {0.0, 0.01, 0.1, 0.5, 1.0}): Job ID ${JOB_LAMBDA} (array 0-4)"
 
 echo ""
@@ -95,18 +95,18 @@ echo "Lambda ablation jobs submitted (5 total)"
 echo ""
 
 # ============================================================================
-# Part 4: Comparison & Analysis (1 job, waits for Phase 4)
+# Part 4: Comparison & Analysis (1 job, waits for core experiments)
 # ============================================================================
 echo "========================================================================"
-echo "Part 4: Comparison Analysis (waits for Phase 4 to complete)"
+echo "Part 4: Comparison Analysis (waits for core experiments to complete)"
 echo "========================================================================"
 echo ""
 
 JOB_COMPARE=$(sbatch --parsable \
     --dependency=afterok:${JOB_DI_BC}:${JOB_DI_PS}:${JOB_VDP_BC}:${JOB_VDP_PS} \
-    slurm/phase4_comparison.sbatch)
+    slurm/01_core_experiments/comparison_bc_ps.sbatch)
 
-echo "✓ Comparison analysis: Job ID ${JOB_COMPARE} (dependent on Phase 4)"
+echo "✓ Comparison analysis: Job ID ${JOB_COMPARE} (dependent on core experiments)"
 echo ""
 
 # ============================================================================

@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================================
-# Phase 4 Master Launch Script
+# Core Experiments Master Launch Script
 # ============================================================================
-# This script submits all Phase 4 experiments:
+# This script submits all Core Experiments experiments:
 #   1. Double Integrator BC
 #   2. Double Integrator PS
 #   3. Van der Pol BC
@@ -21,7 +21,7 @@
 set -e
 
 echo "========================================================================"
-echo "Phase 4: Launching All Experiments"
+echo "Core Experiments: Launching All Experiments"
 echo "========================================================================"
 echo "Start time: $(date)"
 echo ""
@@ -43,19 +43,19 @@ echo "Submitting training jobs..."
 echo ""
 
 # 1. Double Integrator BC
-JOB_DI_BC=$(sbatch --parsable slurm/phase4_di_bc.sbatch)
+JOB_DI_BC=$(sbatch --parsable slurm/slurm/01_core_experiments/di_bc.sbatch)
 echo "✓ Double Integrator BC:  Job ID ${JOB_DI_BC}"
 
 # 2. Double Integrator PS
-JOB_DI_PS=$(sbatch --parsable slurm/phase4_di_ps.sbatch)
+JOB_DI_PS=$(sbatch --parsable slurm/slurm/01_core_experiments/di_ps.sbatch)
 echo "✓ Double Integrator PS:  Job ID ${JOB_DI_PS}"
 
 # 3. Van der Pol BC
-JOB_VDP_BC=$(sbatch --parsable slurm/phase4_vdp_bc.sbatch)
+JOB_VDP_BC=$(sbatch --parsable slurm/slurm/01_core_experiments/vdp_bc.sbatch)
 echo "✓ Van der Pol BC:        Job ID ${JOB_VDP_BC}"
 
 # 4. Van der Pol PS
-JOB_VDP_PS=$(sbatch --parsable slurm/phase4_vdp_ps.sbatch)
+JOB_VDP_PS=$(sbatch --parsable slurm/slurm/01_core_experiments/vdp_ps.sbatch)
 echo "✓ Van der Pol PS:        Job ID ${JOB_VDP_PS}"
 
 echo ""
@@ -69,7 +69,7 @@ echo "Submitting comparison job (will wait for all training to complete)..."
 
 JOB_COMPARE=$(sbatch --parsable \
     --dependency=afterok:${JOB_DI_BC}:${JOB_DI_PS}:${JOB_VDP_BC}:${JOB_VDP_PS} \
-    slurm/phase4_comparison.sbatch)
+    slurm/slurm/01_core_experiments/comparison.sbatch)
 
 echo "✓ Comparison analysis:   Job ID ${JOB_COMPARE} (dependent)"
 echo ""
@@ -78,7 +78,7 @@ echo ""
 # Summary
 # ============================================================================
 echo "========================================================================"
-echo "Phase 4 Experiments Launched Successfully"
+echo "Core Experiments Experiments Launched Successfully"
 echo "========================================================================"
 echo ""
 echo "Job IDs:"
@@ -91,7 +91,7 @@ echo ""
 
 echo "Job Status:"
 echo "  View all:    squeue -u \$USER"
-echo "  View Phase 4: squeue -u \$USER | grep phase4"
+echo "  View Core Experiments: squeue -u \$USER | grep phase4"
 echo ""
 
 echo "Individual Job Status:"
@@ -103,11 +103,11 @@ echo "  squeue -j ${JOB_COMPARE}  # Comparison"
 echo ""
 
 echo "View Logs (live):"
-echo "  tail -f slurm_logs/phase4_di_bc_${JOB_DI_BC}.out"
-echo "  tail -f slurm_logs/phase4_di_ps_${JOB_DI_PS}.out"
-echo "  tail -f slurm_logs/phase4_vdp_bc_${JOB_VDP_BC}.out"
-echo "  tail -f slurm_logs/phase4_vdp_ps_${JOB_VDP_PS}.out"
-echo "  tail -f slurm_logs/phase4_comparison_${JOB_COMPARE}.out"
+echo "  tail -f slurm_logs/slurm/01_core_experiments/di_bc_${JOB_DI_BC}.out"
+echo "  tail -f slurm_logs/slurm/01_core_experiments/di_ps_${JOB_DI_PS}.out"
+echo "  tail -f slurm_logs/slurm/01_core_experiments/vdp_bc_${JOB_VDP_BC}.out"
+echo "  tail -f slurm_logs/slurm/01_core_experiments/vdp_ps_${JOB_VDP_PS}.out"
+echo "  tail -f slurm_logs/slurm/01_core_experiments/comparison_${JOB_COMPARE}.out"
 echo ""
 
 echo "Cancel All Jobs (if needed):"
@@ -132,7 +132,7 @@ echo "========================================================================"
 # Save job IDs to file for reference
 JOB_INFO_FILE="outputs/phase4/job_ids.txt"
 cat > "${JOB_INFO_FILE}" << EOF
-Phase 4 Job IDs
+Core Experiments Job IDs
 Launch time: $(date)
 
 DI_BC=${JOB_DI_BC}

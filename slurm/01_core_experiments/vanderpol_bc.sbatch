@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=phase4_di_ps
-#SBATCH --output=slurm_logs/phase4_di_ps_%j.out
-#SBATCH --error=slurm_logs/phase4_di_ps_%j.err
+#SBATCH --job-name=vanderpol_bc
+#SBATCH --output=slurm_logs/vanderpol_bc_%j.out
+#SBATCH --error=slurm_logs/vanderpol_bc_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --partition=pi_linaresr
 #SBATCH --ntasks=1
@@ -10,15 +10,15 @@
 #SBATCH --gres=gpu:1
 
 # ============================================================================
-# Phase 4: Double Integrator - Process Supervision
+# Core Experiment: Van der Pol - Behavior Cloning
 # ============================================================================
-# This script trains a Process Supervision model on Double Integrator problem
-# Expected runtime: ~2-3 hours for 50 epochs (PS is more expensive than BC)
+# This script trains a baseline BC model on Van der Pol problem
+# Expected runtime: ~1-2 hours for 50 epochs
 
 set -e  # Exit on any error
 
 echo "========================================================================"
-echo "Phase 4 Experiment: Double Integrator - Process Supervision"
+echo "Core Experiment: Van der Pol - Behavior Cloning"
 echo "========================================================================"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Start time: $(date)"
@@ -49,10 +49,10 @@ echo ""
 # ============================================================================
 # 2. Configuration
 # ============================================================================
-PROBLEM="double_integrator"
-METHOD="ps"
+PROBLEM="vanderpol"
+METHOD="bc"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="outputs/phase4/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="outputs/experiments/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
 
 # Data paths
 TRAIN_DATA="data/${PROBLEM}/${PROBLEM}_dataset_train.npz"
@@ -62,17 +62,15 @@ TEST_DATA="data/${PROBLEM}/${PROBLEM}_dataset_test.npz"
 EPOCHS=50
 BATCH_SIZE=32
 LEARNING_RATE=1e-3
-MODEL_SIZE="medium"
-PROCESS_WEIGHT=0.1
+MODEL_TYPE="two_level_medium"
 
 echo "Configuration:"
 echo "  Problem: ${PROBLEM}"
-echo "  Method: Process Supervision"
-echo "  Model size: ${MODEL_SIZE}"
+echo "  Method: ${METHOD}"
+echo "  Model: ${MODEL_TYPE}"
 echo "  Epochs: ${EPOCHS}"
 echo "  Batch size: ${BATCH_SIZE}"
 echo "  Learning rate: ${LEARNING_RATE}"
-echo "  Process weight (λ): ${PROCESS_WEIGHT}"
 echo "  Output directory: ${OUTPUT_DIR}"
 echo "  Train data: ${TRAIN_DATA}"
 echo "  Test data: ${TEST_DATA}"
@@ -95,27 +93,24 @@ echo "✓ Test data: ${TEST_DATA}"
 echo ""
 
 # ============================================================================
-# 4. Train Model (Process Supervision)
+# 4. Train Model (Behavior Cloning)
 # ============================================================================
 echo "========================================================================"
-echo "Training Process Supervision Model"
+echo "Training Behavior Cloning Model"
 echo "========================================================================"
 echo "Start training: $(date)"
 
 mkdir -p "${OUTPUT_DIR}/training"
 
-python scripts/train_trc_process_supervision.py \
-    --data "${TRAIN_DATA}" \
+python scripts/train_trc.py \
+    --data_path "${TRAIN_DATA}" \
     --problem "${PROBLEM}" \
-    --model_size "${MODEL_SIZE}" \
-    --use_two_level \
+    --model_type "${MODEL_TYPE}" \
     --epochs "${EPOCHS}" \
     --batch_size "${BATCH_SIZE}" \
-    --lr "${LEARNING_RATE}" \
-    --process_weight "${PROCESS_WEIGHT}" \
+    --learning_rate "${LEARNING_RATE}" \
     --output_dir "${OUTPUT_DIR}/training" \
-    --scheduler cosine \
-    --patience 20 \
+    --save_best_only \
     --seed 42
 
 TRAIN_EXIT_CODE=$?
@@ -150,7 +145,7 @@ python src/evaluation/evaluator.py \
     --problem "${PROBLEM}" \
     --output "${EVAL_OUTPUT}" \
     --batch_size 64 \
-    --success_threshold 0.1
+    --success_threshold 0.2
 
 EVAL_EXIT_CODE=$?
 echo "Evaluation exit code: ${EVAL_EXIT_CODE}"
@@ -162,33 +157,7 @@ if [ ${EVAL_EXIT_CODE} -ne 0 ]; then
 fi
 
 # ============================================================================
-# 6. Refinement Analysis (Process Supervision Specific)
-# ============================================================================
-echo "========================================================================"
-echo "Analyzing Refinement Process"
-echo "========================================================================"
-echo "Start refinement analysis: $(date)"
-
-REFINEMENT_OUTPUT="${OUTPUT_DIR}/refinement_analysis.png"
-
-python scripts/analyze_refinement.py \
-    --checkpoint "${CHECKPOINT}" \
-    --data "${TEST_DATA}" \
-    --problem "${PROBLEM}" \
-    --output "${REFINEMENT_OUTPUT}" \
-    --num_samples 1000
-
-REFINE_EXIT_CODE=$?
-echo "Refinement analysis exit code: ${REFINE_EXIT_CODE}"
-echo "End refinement analysis: $(date)"
-echo ""
-
-if [ ${REFINE_EXIT_CODE} -ne 0 ]; then
-    echo "WARNING: Refinement analysis failed with exit code ${REFINE_EXIT_CODE}"
-fi
-
-# ============================================================================
-# 7. Generate Basic Trajectory Visualizations
+# 6. Generate Basic Trajectory Visualizations
 # ============================================================================
 echo "========================================================================"
 echo "Generating Basic Trajectory Visualizations"
@@ -215,7 +184,7 @@ if [ ${BASIC_VIZ_EXIT_CODE} -ne 0 ]; then
 fi
 
 # ============================================================================
-# 8. Generate Advanced Planning Analysis
+# 7. Generate Advanced Planning Analysis
 # ============================================================================
 echo "========================================================================"
 echo "Generating Advanced Planning Analysis"
@@ -253,7 +222,7 @@ if [ ${PLANNING_EXIT_CODE} -ne 0 ]; then
 fi
 
 # ============================================================================
-# 9. Generate Summary Report
+# 8. Generate Summary Report
 # ============================================================================
 echo "========================================================================"
 echo "Generating Summary Report"
@@ -266,18 +235,16 @@ cat > "${REPORT}" << EOF
 
 ## Experiment Details
 - **Problem**: ${PROBLEM}
-- **Method**: Process Supervision
+- **Method**: Behavior Cloning
 - **Job ID**: ${SLURM_JOB_ID}
 - **Start Time**: ${TIMESTAMP}
 - **Node**: ${SLURM_NODELIST}
 
 ## Configuration
-- **Model Size**: ${MODEL_SIZE}
-- **Architecture**: Two-Level (z_H/z_L)
+- **Model**: ${MODEL_TYPE}
 - **Epochs**: ${EPOCHS}
 - **Batch Size**: ${BATCH_SIZE}
 - **Learning Rate**: ${LEARNING_RATE}
-- **Process Weight (λ)**: ${PROCESS_WEIGHT}
 
 ## Data
 - **Training Data**: ${TRAIN_DATA}
@@ -286,7 +253,6 @@ cat > "${REPORT}" << EOF
 ## Outputs
 - **Checkpoint**: ${CHECKPOINT}
 - **Evaluation**: ${EVAL_OUTPUT}
-- **Refinement Analysis**: ${REFINEMENT_OUTPUT}
 - **Basic Visualizations**: ${VIZ_DIR}
 - **Planning Analysis**: ${PLANNING_DIR}
 
@@ -295,9 +261,6 @@ See: \`training/training_stats.json\`
 
 ## Test Metrics
 See: \`evaluation_results.json\`
-
-## Refinement Analysis
-See: \`refinement_analysis.png\`
 
 ## Basic Trajectory Visualizations
 See: \`visualizations/\` directory
@@ -317,7 +280,7 @@ echo "Summary report saved to: ${REPORT}"
 echo ""
 
 # ============================================================================
-# 10. Cleanup and Final Summary
+# 9. Cleanup and Final Summary
 # ============================================================================
 echo "========================================================================"
 echo "Experiment Complete"
@@ -335,5 +298,5 @@ echo "Disk usage:"
 du -sh "${OUTPUT_DIR}"
 echo ""
 
-echo "✓ Phase 4 - Double Integrator PS - Complete"
+echo "✓ Phase 4 - Van der Pol BC - Complete"
 echo "========================================================================"

@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=phase4_di_bc
-#SBATCH --output=slurm_logs/phase4_di_bc_%j.out
-#SBATCH --error=slurm_logs/phase4_di_bc_%j.err
+#SBATCH --job-name=di_bc
+#SBATCH --output=slurm_logs/di_bc_%j.out
+#SBATCH --error=slurm_logs/di_bc_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --partition=pi_linaresr
 #SBATCH --ntasks=1
@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:1
 
 # ============================================================================
-# Phase 4: Double Integrator - Behavior Cloning
+# Core Experiment: Double Integrator - Behavior Cloning
 # ============================================================================
 # This script trains a baseline BC model on Double Integrator problem
 # Expected runtime: ~1-2 hours for 50 epochs
@@ -52,7 +52,7 @@ echo ""
 PROBLEM="double_integrator"
 METHOD="bc"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="outputs/phase4/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="outputs/experiments/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
 
 # Data paths
 TRAIN_DATA="data/${PROBLEM}/${PROBLEM}_dataset_train.npz"

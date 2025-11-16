@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=phase4_vdp_ps
-#SBATCH --output=slurm_logs/phase4_vdp_ps_%j.out
-#SBATCH --error=slurm_logs/phase4_vdp_ps_%j.err
+#SBATCH --job-name=vdp_ps
+#SBATCH --output=slurm_logs/vdp_ps_%j.out
+#SBATCH --error=slurm_logs/vdp_ps_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --partition=pi_linaresr
 #SBATCH --ntasks=1
@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:1
 
 # ============================================================================
-# Phase 4: Van der Pol - Process Supervision
+# Core Experiment: Van der Pol - Process Supervision
 # ============================================================================
 # This script trains a Process Supervision model on Van der Pol problem
 # Expected runtime: ~2-3 hours for 50 epochs (PS is more expensive than BC)
@@ -52,7 +52,7 @@ echo ""
 PROBLEM="vanderpol"
 METHOD="ps"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="outputs/phase4/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="outputs/experiments/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
 
 # Data paths
 TRAIN_DATA="data/${PROBLEM}/${PROBLEM}_dataset_train.npz"

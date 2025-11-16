@@ -2,6 +2,16 @@
 
 This directory contains all SLURM batch scripts for reproducing the paper results.
 
+## Directory Structure
+
+```
+slurm/
+├── 01_core_experiments/        # Main BC vs PS demonstrations
+├── 02_ablation_lambda/          # Lambda parameter sweep
+├── 03_robustness_multiseed/     # Multi-seed validation
+└── archive/                     # Old/deprecated scripts
+```
+
 ## Overview
 
 The paper compares **Behavior Cloning (BC)** vs **Process Supervision (PS)** on two control problems:
@@ -12,60 +22,37 @@ All experiments use **seed=42** for fair comparison between methods.
 
 ---
 
-## Main Experiments (Phase 4)
+## 01: Core Experiments
 
-These are the core results comparing BC vs PS:
+These are the main results comparing BC vs PS:
 
 ### Double Integrator
 ```bash
-sbatch slurm/phase4_di_bc.sbatch   # BC baseline
-sbatch slurm/phase4_di_ps.sbatch   # PS method
+sbatch slurm/01_core_experiments/double_integrator_bc.sbatch   # BC baseline
+sbatch slurm/01_core_experiments/double_integrator_ps.sbatch   # PS method
 ```
 
 ### Van der Pol
 ```bash
-sbatch slurm/phase4_vdp_bc.sbatch  # BC baseline
-sbatch slurm/phase4_vdp_ps.sbatch  # PS method
+sbatch slurm/01_core_experiments/vanderpol_bc.sbatch  # BC baseline
+sbatch slurm/01_core_experiments/vanderpol_ps.sbatch  # PS method
 ```
 
 ### Run All + Comparison
 ```bash
-bash slurm/launch_phase4.sh        # Launches all 4 + comparison
+bash slurm/01_core_experiments/launch_core_experiments.sh  # Launches all 4 + comparison
 ```
 
-**Output**: `outputs/phase4/{problem}_{method}_{jobid}_{timestamp}/`
+**Output**: `outputs/experiments/{problem}_{method}_{jobid}_{timestamp}/`
 
 ---
 
-## Robustness Study (Multi-Seed)
-
-Tests stability across 5 random seeds (42, 123, 456, 789, 1011) on Van der Pol:
-
-```bash
-# Run BC with 5 seeds (parallel)
-sbatch slurm/robustness_vdp_bc_multiseed.sbatch
-
-# Run PS with 5 seeds (parallel)
-sbatch slurm/robustness_vdp_ps_multiseed.sbatch
-```
-
-**Output**: `outputs/robustness/vanderpol_{bc|ps}_seed{SEED}_{jobid}_{timestamp}/`
-
-**Analysis**:
-```bash
-python scripts/aggregate_robustness_results.py
-```
-
-Generates `outputs/robustness/robustness_summary.md` with mean ± std tables.
-
----
-
-## Lambda (λ) Ablation Study
+## 02: Lambda Ablation Study
 
 Tests process weight λ ∈ {0.0, 0.01, 0.1, 0.5, 1.0} on Van der Pol PS:
 
 ```bash
-sbatch slurm/ablation_lambda.sbatch
+sbatch slurm/02_ablation_lambda/lambda_sweep.sbatch
 ```
 
 **Output**: `outputs/ablation_lambda/vanderpol_ps_lambda{LAMBDA}_{jobid}_{timestamp}/`
@@ -76,6 +63,30 @@ python scripts/analyze_lambda_ablation.py
 ```
 
 Generates plots and tables showing optimal λ value.
+
+---
+
+## 03: Robustness Study (Multi-Seed)
+
+Tests stability across 5 random seeds (42, 123, 456, 789, 1011) on Van der Pol:
+
+```bash
+# Run BC with 5 seeds (parallel)
+sbatch slurm/03_robustness_multiseed/vanderpol_bc_multiseed.sbatch
+
+# Run PS with 5 seeds (parallel)
+sbatch slurm/03_robustness_multiseed/vanderpol_ps_multiseed.sbatch
+```
+
+**Output**: `outputs/robustness/vanderpol_{bc|ps}_seed{SEED}_{jobid}_{timestamp}/`
+
+**Analysis**:
+```bash
+python scripts/aggregate_robustness_results.py
+python scripts/plot_robustness_comparison.py
+```
+
+Generates `outputs/robustness/robustness_summary.md` with mean ± std tables.
 
 ---
 
