@@ -115,7 +115,8 @@ python scripts/train_trc_process_supervision.py \
     --process_weight "${PROCESS_WEIGHT}" \
     --output_dir "${OUTPUT_DIR}/training" \
     --scheduler cosine \
-    --patience 20
+    --patience 20 \
+    --seed 42
 
 TRAIN_EXIT_CODE=$?
 echo "Training exit code: ${TRAIN_EXIT_CODE}"

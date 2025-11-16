@@ -2,7 +2,7 @@
 Visualize Control Trajectories
 
 Compare TRC control vs optimal control with detailed trajectory plots.
-Supports any control problem (double integrator, Van der Pol, pendulum, etc.)
+Supports any control problem (double integrator, Van der Pol, rocket landing, etc.)
 """
 
 import torch
@@ -484,7 +484,7 @@ def main():
     parser = argparse.ArgumentParser(description="Visualize control trajectories for any problem")
 
     parser.add_argument('--problem', type=str, required=True,
-                       help='Problem name (e.g., vanderpol, double_integrator, pendulum)')
+                       help='Problem name (e.g., vanderpol, double_integrator, rocket_landing)')
     parser.add_argument('--checkpoint', type=str,
                        default='outputs/supervised_medium/best_model.pt',
                        help='Path to trained model checkpoint')

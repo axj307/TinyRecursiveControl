@@ -447,8 +447,6 @@ def main():
             max_control = max(abs(control_lower[0]), abs(control_upper[0]))
             if args.problem == "double_integrator":
                 problem_kwargs["control_bounds"] = max_control
-            elif args.problem == "pendulum":
-                problem_kwargs["max_torque"] = max_control
 
     try:
         problem = get_problem(args.problem, **problem_kwargs)

@@ -41,6 +41,7 @@ Usage:
 
 import torch
 import numpy as np
+import random
 import argparse
 import sys
 import logging
@@ -64,6 +65,25 @@ from src.environments.torch_dynamics import (
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def set_random_seed(seed):
+    """
+    Set random seed for reproducibility across all libraries.
+
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Additional settings for deterministic behavior
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    logger.info(f"✓ Random seed set to {seed} for reproducibility")
 
 
 def create_dynamics_function(problem):
@@ -142,7 +162,7 @@ def main():
     parser.add_argument('--data', type=str, required=True,
                        help='Path to LQR dataset (.npz)')
     parser.add_argument('--problem', type=str, required=True,
-                       choices=['vanderpol', 'double_integrator', 'pendulum', 'rocket_landing'],
+                       choices=['vanderpol', 'double_integrator', 'rocket_landing'],
                        help='Control problem type (must match dataset)')
     parser.add_argument('--train_split', type=float, default=0.9,
                        help='Train/val split ratio')
@@ -190,6 +210,10 @@ def main():
     parser.add_argument('--device', type=str, default='auto',
                        help='Device (cuda/cpu/auto)')
 
+    # Reproducibility
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed for reproducibility')
+
     # Problem-specific parameters
     parser.add_argument('--mu', type=float, default=1.0,
                        help='Van der Pol parameter (if --problem vanderpol)')
@@ -199,6 +223,9 @@ def main():
                        help='Control horizon (if not specified, infer from data)')
 
     args = parser.parse_args()
+
+    # Set random seed for reproducibility
+    set_random_seed(args.seed)
 
     # Set device
     if args.device == 'auto':

@@ -159,7 +159,7 @@ def main():
     parser.add_argument('--data', type=str, required=True,
                        help='Path to test dataset (.npz)')
     parser.add_argument('--problem', type=str, required=True,
-                       choices=['vanderpol', 'double_integrator', 'pendulum', 'rocket_landing'],
+                       choices=['vanderpol', 'double_integrator', 'rocket_landing'],
                        help='Control problem type')
     parser.add_argument('--num_samples', type=int, default=None,
                        help='Number of samples to analyze (None = all)')

@@ -1,29 +1,41 @@
 #!/bin/bash
-#SBATCH --job-name=phase4_vdp_bc
-#SBATCH --output=slurm_logs/phase4_vdp_bc_%j.out
-#SBATCH --error=slurm_logs/phase4_vdp_bc_%j.err
+#SBATCH --job-name=abl_lambda
+#SBATCH --output=slurm_logs/abl_lambda_%A_%a.out
+#SBATCH --error=slurm_logs/abl_lambda_%A_%a.err
 #SBATCH --time=12:00:00
 #SBATCH --partition=pi_linaresr
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
+#SBATCH --array=0-4
 
 # ============================================================================
-# Phase 4: Van der Pol - Behavior Cloning
+# Lambda (λ) Ablation Study: Van der Pol Process Supervision
 # ============================================================================
-# This script trains a baseline BC model on Van der Pol problem
-# Expected runtime: ~1-2 hours for 50 epochs
+# This script tests different process supervision weights to find optimal λ.
+#
+# Lambda values: 0.0, 0.01, 0.1, 0.5, 1.0
+# λ=0.0 should recover pure BC (no process supervision)
+# Higher λ emphasizes refinement process over final accuracy
+#
+# Fixed seed: 42 (fair comparison across λ values)
+# Expected runtime: ~2-3 hours per λ (all run in parallel)
 
 set -e  # Exit on any error
 
+# Define lambda values array
+LAMBDAS=(0.0 0.01 0.1 0.5 1.0)
+LAMBDA=${LAMBDAS[$SLURM_ARRAY_TASK_ID]}
+
 echo "========================================================================"
-echo "Phase 4 Experiment: Van der Pol - Behavior Cloning"
+echo "Lambda Ablation Study: Van der Pol PS - λ=${LAMBDA}"
 echo "========================================================================"
-echo "Job ID: ${SLURM_JOB_ID}"
+echo "Job ID: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+echo "Array task ID: ${SLURM_ARRAY_TASK_ID}"
+echo "Process weight (λ): ${LAMBDA}"
 echo "Start time: $(date)"
 echo "Node: ${SLURM_NODELIST}"
-echo "Working directory: ${SLURM_SUBMIT_DIR}"
 echo ""
 
 # ============================================================================
@@ -50,24 +62,27 @@ echo ""
 # 2. Configuration
 # ============================================================================
 PROBLEM="vanderpol"
-METHOD="bc"
+METHOD="ps"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="outputs/phase4/${PROBLEM}_${METHOD}_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="outputs/ablation_lambda/${PROBLEM}_${METHOD}_lambda${LAMBDA}_${SLURM_ARRAY_JOB_ID}_${TIMESTAMP}"
 
 # Data paths
 TRAIN_DATA="data/${PROBLEM}/${PROBLEM}_dataset_train.npz"
 TEST_DATA="data/${PROBLEM}/${PROBLEM}_dataset_test.npz"
 
-# Training hyperparameters
+# Training hyperparameters (fixed seed for fair comparison)
 EPOCHS=50
 BATCH_SIZE=32
 LEARNING_RATE=1e-3
-MODEL_TYPE="two_level_medium"
+MODEL_SIZE="medium"
+SEED=42
 
 echo "Configuration:"
 echo "  Problem: ${PROBLEM}"
-echo "  Method: ${METHOD}"
-echo "  Model: ${MODEL_TYPE}"
+echo "  Method: Process Supervision"
+echo "  Model size: ${MODEL_SIZE}"
+echo "  Process weight (λ): ${LAMBDA}"
+echo "  Random seed: ${SEED} (fixed for fair comparison)"
 echo "  Epochs: ${EPOCHS}"
 echo "  Batch size: ${BATCH_SIZE}"
 echo "  Learning rate: ${LEARNING_RATE}"
@@ -93,25 +108,28 @@ echo "✓ Test data: ${TEST_DATA}"
 echo ""
 
 # ============================================================================
-# 4. Train Model (Behavior Cloning)
+# 4. Train Model (Process Supervision with varying λ)
 # ============================================================================
 echo "========================================================================"
-echo "Training Behavior Cloning Model"
+echo "Training Process Supervision Model (λ=${LAMBDA})"
 echo "========================================================================"
 echo "Start training: $(date)"
 
 mkdir -p "${OUTPUT_DIR}/training"
 
-python scripts/train_trc.py \
-    --data_path "${TRAIN_DATA}" \
+python scripts/train_trc_process_supervision.py \
+    --data "${TRAIN_DATA}" \
     --problem "${PROBLEM}" \
-    --model_type "${MODEL_TYPE}" \
+    --model_size "${MODEL_SIZE}" \
+    --use_two_level \
     --epochs "${EPOCHS}" \
     --batch_size "${BATCH_SIZE}" \
-    --learning_rate "${LEARNING_RATE}" \
+    --lr "${LEARNING_RATE}" \
+    --process_weight "${LAMBDA}" \
     --output_dir "${OUTPUT_DIR}/training" \
-    --save_best_only \
-    --seed 42
+    --scheduler cosine \
+    --patience 20 \
+    --seed "${SEED}"
 
 TRAIN_EXIT_CODE=$?
 echo "Training exit code: ${TRAIN_EXIT_CODE}"
@@ -157,146 +175,42 @@ if [ ${EVAL_EXIT_CODE} -ne 0 ]; then
 fi
 
 # ============================================================================
-# 6. Generate Basic Trajectory Visualizations
+# 6. Save Lambda Info
 # ============================================================================
-echo "========================================================================"
-echo "Generating Basic Trajectory Visualizations"
-echo "========================================================================"
-echo "Start basic visualization: $(date)"
+LAMBDA_INFO="${OUTPUT_DIR}/lambda_info.txt"
+cat > "${LAMBDA_INFO}" << EOF
+Process Weight (λ): ${LAMBDA}
+Array Task ID: ${SLURM_ARRAY_TASK_ID}
+Job ID: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+Random Seed: ${SEED}
+Timestamp: ${TIMESTAMP}
 
-VIZ_DIR="${OUTPUT_DIR}/visualizations"
-mkdir -p "${VIZ_DIR}"
-
-python visualize_trajectories.py \
-    --problem "${PROBLEM}" \
-    --checkpoint "${CHECKPOINT}" \
-    --test_data "${TEST_DATA}" \
-    --output_dir "${VIZ_DIR}" \
-    --num_examples 6
-
-BASIC_VIZ_EXIT_CODE=$?
-echo "Basic visualization exit code: ${BASIC_VIZ_EXIT_CODE}"
-echo "End basic visualization: $(date)"
-echo ""
-
-if [ ${BASIC_VIZ_EXIT_CODE} -ne 0 ]; then
-    echo "WARNING: Basic visualization generation failed with exit code ${BASIC_VIZ_EXIT_CODE}"
-fi
-
-# ============================================================================
-# 7. Generate Advanced Planning Analysis
-# ============================================================================
-echo "========================================================================"
-echo "Generating Advanced Planning Analysis"
-echo "========================================================================"
-echo "Start planning analysis: $(date)"
-
-PLANNING_DIR="${OUTPUT_DIR}/planning_analysis"
-mkdir -p "${PLANNING_DIR}"
-
-# Copy README documentation from TRM worktree
-TRM_README="/orcd/home/002/amitjain/project/TinyRecursiveControl_worktrees/trm-process-supervision/outputs/vanderpol_ps_5715793_20251030_120734/planning_analysis/README.md"
-if [ -f "${TRM_README}" ]; then
-    cp "${TRM_README}" "${PLANNING_DIR}/README.md"
-    echo "Copied planning analysis README from TRM worktree"
-else
-    echo "WARNING: Could not find TRM README at ${TRM_README}"
-fi
-
-# Full planning visualizations (11+ plots)
-python scripts/visualize_planning.py \
-    --checkpoint "${CHECKPOINT}" \
-    --test_data "${TEST_DATA}" \
-    --problem "${PROBLEM}" \
-    --output_dir "${PLANNING_DIR}" \
-    --num_samples 100 \
-    --level all
-
-PLANNING_EXIT_CODE=$?
-echo "Planning analysis exit code: ${PLANNING_EXIT_CODE}"
-echo "End planning analysis: $(date)"
-echo ""
-
-if [ ${PLANNING_EXIT_CODE} -ne 0 ]; then
-    echo "WARNING: Planning analysis generation failed with exit code ${PLANNING_EXIT_CODE}"
-fi
-
-# ============================================================================
-# 8. Generate Summary Report
-# ============================================================================
-echo "========================================================================"
-echo "Generating Summary Report"
-echo "========================================================================"
-
-REPORT="${OUTPUT_DIR}/experiment_summary.md"
-
-cat > "${REPORT}" << EOF
-# Phase 4 Experiment Report
-
-## Experiment Details
-- **Problem**: ${PROBLEM}
-- **Method**: Behavior Cloning
-- **Job ID**: ${SLURM_JOB_ID}
-- **Start Time**: ${TIMESTAMP}
-- **Node**: ${SLURM_NODELIST}
-
-## Configuration
-- **Model**: ${MODEL_TYPE}
-- **Epochs**: ${EPOCHS}
-- **Batch Size**: ${BATCH_SIZE}
-- **Learning Rate**: ${LEARNING_RATE}
-
-## Data
-- **Training Data**: ${TRAIN_DATA}
-- **Test Data**: ${TEST_DATA}
-
-## Outputs
-- **Checkpoint**: ${CHECKPOINT}
-- **Evaluation**: ${EVAL_OUTPUT}
-- **Basic Visualizations**: ${VIZ_DIR}
-- **Planning Analysis**: ${PLANNING_DIR}
-
-## Training Metrics
-See: \`training/training_stats.json\`
-
-## Test Metrics
-See: \`evaluation_results.json\`
-
-## Basic Trajectory Visualizations
-See: \`visualizations/\` directory
-- detailed_example.png
-- error_distribution.png
-- trajectories_comparison.png
-
-## Advanced Planning Analysis
-See: \`planning_analysis/\` directory
-- README.md (comprehensive documentation)
-- 11 advanced interpretability plots
-
-Generated on: $(date)
+Expected behavior:
+- λ=0.0: Pure BC (no process supervision)
+- λ=0.01-0.1: Balanced (accuracy + refinement)
+- λ>0.5: Heavy emphasis on refinement process
 EOF
 
-echo "Summary report saved to: ${REPORT}"
+echo "✓ Lambda info saved to: ${LAMBDA_INFO}"
 echo ""
 
 # ============================================================================
-# 9. Cleanup and Final Summary
+# 7. Summary
 # ============================================================================
 echo "========================================================================"
-echo "Experiment Complete"
+echo "Lambda Ablation Experiment Complete - λ=${LAMBDA}"
 echo "========================================================================"
-echo "Job ID: ${SLURM_JOB_ID}"
+echo "Job ID: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "End time: $(date)"
 echo ""
 
-echo "Files generated:"
-ls -lh "${OUTPUT_DIR}"
+echo "Key files:"
+echo "  Training metrics: ${OUTPUT_DIR}/training/metrics.json"
+echo "  Evaluation results: ${EVAL_OUTPUT}"
+echo "  Best checkpoint: ${CHECKPOINT}"
+echo "  Lambda info: ${LAMBDA_INFO}"
 echo ""
 
-echo "Disk usage:"
-du -sh "${OUTPUT_DIR}"
-echo ""
-
-echo "✓ Phase 4 - Van der Pol BC - Complete"
+echo "✓ Van der Pol PS - λ=${LAMBDA} - Complete"
 echo "========================================================================"

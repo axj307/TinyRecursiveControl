@@ -58,11 +58,10 @@ def get_problem(name: str, **kwargs) -> BaseControlProblem:
         ...                       horizon=20,
         ...                       control_bounds=5.0)
 
-        >>> # Create pendulum
-        >>> problem = get_problem("pendulum",
+        >>> # Create vanderpol
+        >>> problem = get_problem("vanderpol",
         ...                       dt=0.05,
-        ...                       mass=2.0,
-        ...                       length=0.5)
+        ...                       mu_base=1.0)
     """
     if name not in PROBLEM_REGISTRY:
         available = ", ".join(sorted(PROBLEM_REGISTRY.keys()))
@@ -85,7 +84,7 @@ def list_problems() -> list:
     Example:
         >>> problems = list_problems()
         >>> print(problems)
-        ['double_integrator', 'pendulum']
+        ['double_integrator', 'vanderpol', 'rocket_landing']
     """
     return sorted(PROBLEM_REGISTRY.keys())
 

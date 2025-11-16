@@ -17,6 +17,7 @@ from pathlib import Path
 import argparse
 import json
 from typing import Dict
+import random
 import torch
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import numpy as np
@@ -29,6 +30,25 @@ from src.training.supervised_trainer import train_epoch, validate
 from src.training.utils import ModelCheckpoint, EarlyStopping, TrainingStats, get_lr_scheduler
 from src.config import get_config
 from src.environments import list_problems, get_problem
+
+
+def set_random_seed(seed):
+    """
+    Set random seed for reproducibility across all libraries.
+
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Additional settings for deterministic behavior
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    print(f"✓ Random seed set to {seed} for reproducibility")
 
 
 def load_dataset(data_path, eval_data_path=None, batch_size=64):
@@ -195,7 +215,7 @@ def create_model(model_type, state_dim, control_dim, horizon, control_bounds=4.0
 
 def train_model(model, train_loader, eval_loader, epochs, learning_rate, output_dir,
                 log_interval=10, eval_interval=10, save_checkpoints=True, save_best_only=False,
-                trajectory_loss_weight=0.0, dt=0.33, problem=None):
+                trajectory_loss_weight=0.0, dt=0.33, problem=None, seed=None):
     """Train the model."""
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -294,6 +314,7 @@ def train_model(model, train_loader, eval_loader, epochs, learning_rate, output_
         'train_losses': [float(x) for x in train_losses],
         'eval_losses': [float(x) for x in eval_losses],
         'num_epochs': len(train_losses),
+        'random_seed': seed,
     }
 
     with open(output_path / 'metrics.json', 'w') as f:
@@ -394,11 +415,18 @@ def main():
     parser.add_argument('--save_checkpoints', action='store_true', help='Save checkpoints')
     parser.add_argument('--save_best_only', action='store_true', help='Only save best checkpoint')
 
+    # Reproducibility
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+
     args = parser.parse_args()
 
     print("=" * 70)
     print("TinyRecursiveControl Training")
     print("=" * 70)
+    print()
+
+    # Set random seed for reproducibility
+    set_random_seed(args.seed)
     print()
 
     # Load configuration if problem is specified
@@ -529,6 +557,7 @@ def main():
         trajectory_loss_weight=args.trajectory_loss_weight,
         dt=args.dt,
         problem=problem_instance,
+        seed=args.seed,
     )
 
     print("\n✓ Training complete!")

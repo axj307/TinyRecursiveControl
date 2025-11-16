@@ -24,7 +24,8 @@ This project adapts the **Tiny Recursion Model** (TRM) architecture from [Less i
 ### Supported Problems
 
 - **Double Integrator**: 2D linear dynamics (position, velocity)
-- **Pendulum**: Nonlinear dynamics with angle wrapping
+- **Van der Pol Oscillator**: 2D nonlinear oscillator (via environment abstraction)
+- **Rocket Landing**: 7D nonlinear variable-mass dynamics
 - **Your Problem**: Easy to add new problems - see [Adding New Problems Guide](docs/ADDING_NEW_PROBLEMS.md)
 
 ### Quick Example
@@ -34,8 +35,8 @@ from src.environments import get_problem
 
 # Create any registered problem
 problem = get_problem("double_integrator")
-# or
-problem = get_problem("pendulum")
+#! or another registered problem
+# problem = get_problem("vanderpol")
 
 # Problem provides unified interface
 print(f"State dim: {problem.state_dim}")
@@ -290,7 +291,7 @@ TinyRecursiveControl/
 │   ├── environments/            # 🆕 Environment abstraction
 │   │   ├── base.py             # Base class for all problems
 │   │   ├── double_integrator.py # Double integrator implementation
-│   │   ├── pendulum.py         # Pendulum implementation
+│   │   ├── vanderpol.py        # Van der Pol implementation
 │   │   ├── metadata.py         # Unified metadata schema
 │   │   └── __init__.py         # Problem registry
 │   ├── config/                 # 🆕 Configuration system
@@ -312,7 +313,6 @@ TinyRecursiveControl/
 ├── configs/                     # 🆕 YAML configurations
 │   ├── problems/               # Problem-specific configs
 │   │   ├── double_integrator.yaml
-│   │   └── pendulum.yaml
 │   └── training/               # Training configs
 │       └── default.yaml
 ├── scripts/
@@ -320,7 +320,6 @@ TinyRecursiveControl/
 │   └── train_trc.py            # 🆕 Multi-problem training
 ├── slurm/                      # 🆕 Problem-specific pipelines
 │   ├── double_integrator_pipeline.sbatch
-│   └── pendulum_pipeline.sbatch
 ├── docs/
 │   └── ADDING_NEW_PROBLEMS.md  # 🆕 Guide for adding problems
 ├── experiments/
@@ -345,12 +344,7 @@ python scripts/generate_dataset.py \
     --output_dir data/double_integrator \
     --split train
 
-# For pendulum
-python scripts/generate_dataset.py \
-    --problem pendulum \
-    --num_samples 10000 \
-    --output_dir data/pendulum \
-    --split train
+##
 
 # Parameters are loaded from configs/problems/{problem}.yaml
 ```
@@ -366,13 +360,7 @@ python scripts/train_trc.py \
     --epochs 100 \
     --output_dir outputs/double_integrator_training
 
-# For pendulum
-python scripts/train_trc.py \
-    --problem pendulum \
-    --data_path data/pendulum/pendulum_dataset_train.npz \
-    --model_size medium \
-    --epochs 150 \
-    --output_dir outputs/pendulum_training
+##
 ```
 
 ### 3. Evaluate Model
@@ -385,12 +373,7 @@ python src/evaluation/evaluator.py \
     --test_data data/double_integrator/double_integrator_dataset_test.npz \
     --output outputs/double_integrator_eval.json
 
-# For pendulum
-python src/evaluation/evaluator.py \
-    --problem pendulum \
-    --checkpoint outputs/pendulum_training/best_model.pt \
-    --test_data data/pendulum/pendulum_dataset_test.npz \
-    --output outputs/pendulum_eval.json
+##
 ```
 
 ### 4. Complete Pipeline (SLURM)
@@ -401,8 +384,7 @@ Run the complete end-to-end pipeline:
 # Double integrator
 sbatch slurm/double_integrator_pipeline.sbatch
 
-# Pendulum
-sbatch slurm/pendulum_pipeline.sbatch
+##
 ```
 
 Each pipeline includes:
@@ -532,7 +514,7 @@ Want to add a new control problem? It's easy! Follow these steps:
    ```
 
 4. **Create pipeline**: `slurm/my_problem_pipeline.sbatch`
-   - Copy from `double_integrator_pipeline.sbatch` or `pendulum_pipeline.sbatch`
+   - Copy from `double_integrator_pipeline.sbatch` or `vanderpol_pipeline.sbatch`
    - Change `PROBLEM="my_problem"`
 
 5. **Test**:
@@ -550,7 +532,7 @@ See **[docs/ADDING_NEW_PROBLEMS.md](docs/ADDING_NEW_PROBLEMS.md)** for:
 - Detailed walkthrough with examples
 - Common pitfalls and solutions
 - Advanced topics (multi-dimensional controls, hybrid systems, etc.)
-- Complete pendulum implementation example
+  
 
 ---
 
@@ -622,7 +604,6 @@ Compare performance across different control problems:
 ### Multi-Problem Support
 - **[Adding New Problems Guide](docs/ADDING_NEW_PROBLEMS.md)**: Step-by-step guide for adding new control problems
   - Detailed walkthrough with examples
-  - Pendulum implementation walkthrough
   - Common pitfalls and solutions
   - Testing and validation steps
 

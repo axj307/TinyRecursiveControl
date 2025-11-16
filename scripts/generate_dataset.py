@@ -14,11 +14,11 @@ Usage:
         --output_dir data/double_integrator \\
         --split train
 
-    # Generate pendulum dataset with custom seed
+    # Generate Van der Pol dataset with custom seed
     python scripts/generate_dataset.py \\
-        --problem pendulum \\
+        --problem vanderpol \\
         --num_samples 5000 \\
-        --output_dir data/pendulum \\
+        --output_dir data/vanderpol \\
         --split test \\
         --seed 123
 
@@ -210,10 +210,7 @@ def main():
     # Get bounds if specified
     bounds_cfg = problem_cfg.get("bounds", {})
     if "control" in bounds_cfg:
-        # For double integrator, this becomes control_bounds
-        # For pendulum, this becomes max_torque
-        # For vanderpol, this becomes control_bounds
-        # We need problem-specific handling here
+        # For double integrator and Van der Pol: symmetric control bounds
         control_lower = bounds_cfg["control"].get("lower", [])
         control_upper = bounds_cfg["control"].get("upper", [])
         if control_lower and control_upper:
@@ -221,8 +218,6 @@ def main():
             max_control = max(abs(control_lower[0]), abs(control_upper[0]))
             if args.problem == "double_integrator":
                 problem_kwargs["control_bounds"] = max_control
-            elif args.problem == "pendulum":
-                problem_kwargs["max_torque"] = max_control
             elif args.problem == "vanderpol":
                 problem_kwargs["control_bounds"] = max_control
 
