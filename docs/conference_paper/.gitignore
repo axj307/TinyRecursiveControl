@@ -1,0 +1,25 @@
+# Ignore generated figure files (large binaries)
+figures/*.png
+figures/*.pdf
+figures/*.jpg
+figures/*.jpeg
+
+# Keep the source mapping metadata
+!figures/source_mapping.json
+
+# Keep README in figures directory if present
+!figures/README.md
+
+# Ignore temporary files
+*.tmp
+*.bak
+*~
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db

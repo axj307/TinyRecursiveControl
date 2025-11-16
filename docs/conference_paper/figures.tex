@@ -1,0 +1,102 @@
+% Conference Paper Figures - LaTeX Code
+% Copy this into your paper where figures should appear
+% Figures are numbered 1-8 in paper order (Double Integrator → Van der Pol → Rocket)
+
+% ============================================================================
+% Figure 1: Problem Definitions
+% ============================================================================
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig1_problems_and_optimal.png}
+\caption{Control problems evaluated in order of increasing complexity. (a) Double Integrator: Linear 2D system with LQR optimal trajectory. (b) Van der Pol Oscillator: Nonlinear limit cycle system. (c) Rocket Landing: Constrained aerospace problem. Initial states (red), targets (green), optimal solutions (blue).}
+\label{fig:problems}
+\end{figure*}
+
+% ============================================================================
+% Figure 2: Double Integrator Progressive Refinement
+% ============================================================================
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig2_di_progressive_refinement.png}
+\caption{Progressive refinement on Double Integrator using Process Supervision (TRM architecture). Solid lines show refinement iterations improving from initial prediction (orange) toward optimal (green). Dotted line: single-shot baseline ($\lambda=0$). PS achieves 98.1\% success rate.}
+\label{fig:di_refinement}
+\end{figure}
+
+% ============================================================================
+% Figure 3: Van der Pol Progressive Refinement
+% ============================================================================
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig3_vdp_progressive_refinement.png}
+\caption{Progressive refinement on Van der Pol oscillator. Refinement iterations (solid) progressively approach limit cycle (green). PS achieves 45.8\% success vs 33.1\% single-shot ($\lambda=0$, dotted), a 38\% improvement on nonlinear dynamics.}
+\label{fig:vdp_refinement}
+\end{figure}
+
+% ============================================================================
+% Figure 4: Hierarchical Latent Space
+% ============================================================================
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig4_hierarchical_latent_space.png}
+\caption{Hierarchical latent space in TRM architecture (Van der Pol). (a) High-level $z_H$ captures coarse planning. (b) Low-level $z_L$ refines local dynamics. (c) Refinement evolution shows progressive organization. Two-level hierarchy enables compositional control reasoning.}
+\label{fig:latent_hierarchy}
+\end{figure*}
+
+% ============================================================================
+% Figure 5: Rocket Landing
+% ============================================================================
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig5_rocket_landing.png}
+\caption{Rocket landing control using TRM architecture. (a) Refinement to fuel-optimal trajectory. (b) Thrust vector control. (c) Constraint satisfaction. PS achieves [XX\%] success, demonstrating aerospace applicability.}
+\label{fig:rocket}
+\end{figure}
+
+% ============================================================================
+% Figure 6: Performance Summary
+% ============================================================================
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig6_performance_summary.png}
+\caption{TRM architecture performance across control problems. (a) Success rates: PS approaches optimal on linear (DI: 98.1\%) and succeeds on nonlinear (VdP: 45.8\%). Gray bars: single-shot ($\lambda=0$) reference. (b) Mean errors normalized by difficulty.}
+\label{fig:performance}
+\end{figure*}
+
+% ============================================================================
+% Figure 7: Refinement Strategy
+% ============================================================================
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig7_refinement_strategy.png}
+\caption{Refinement strategy in TRM architecture (Van der Pol). (a) Spatial: trajectories converge iteratively. (b) Hierarchical: $z_H$ plans coarsely, $z_L$ refines locally. (c) Metrics show monotonic improvement across H/L-cycles.}
+\label{fig:strategy}
+\end{figure*}
+
+% ============================================================================
+% Figure 8: Robustness and Ablation
+% ============================================================================
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig8_robustness_ablation.png}
+\caption{Validation studies (Van der Pol). (a) Multi-seed robustness: PS 43.7$\pm$2.6\% vs single-shot 32.6$\pm$3.5\% (34\% improvement). (b) Process weight ablation: optimal $\lambda=1.0$ achieves 81.7\% (2.5$\times$ over $\lambda=0$).}
+\label{fig:validation}
+\end{figure*}
+
+% ============================================================================
+% Usage Notes
+% ============================================================================
+%
+% 1. Figures 1, 4, 6, 7, 8 use figure* (two-column) for detail
+% 2. Figures 2, 3, 5 use figure (single-column) for space efficiency
+% 3. All paths assume figures/ subdirectory in your paper's directory
+% 4. Update [XX%] in Fig 5 caption when rocket landing experiments complete
+%
+% Reference figures in text using:
+%   \ref{fig:problems}
+%   \ref{fig:di_refinement}
+%   \ref{fig:vdp_refinement}
+%   \ref{fig:latent_hierarchy}
+%   \ref{fig:rocket}
+%   \ref{fig:performance}
+%   \ref{fig:strategy}
+%   \ref{fig:validation}

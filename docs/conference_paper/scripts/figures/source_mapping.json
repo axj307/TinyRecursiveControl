@@ -1,0 +1,64 @@
+{
+  "fig1_problems_and_optimal.png": {
+    "type": "composite",
+    "description": "Control problems (DI, VdP, Rocket) with optimal trajectories",
+    "sources": [],
+    "status": "TODO - needs composite generation script"
+  },
+  "fig2_di_progressive_refinement.png": {
+    "type": "direct_copy",
+    "description": "DI PS refinement with BC/optimal reference",
+    "sources": [
+      "experiments/comparison/refinement/di_ps_vs_bc.png"
+    ],
+    "status": "available"
+  },
+  "fig3_vdp_progressive_refinement.png": {
+    "type": "direct_copy",
+    "description": "VdP PS refinement with BC/limit cycle reference",
+    "sources": [
+      "experiments/comparison/refinement/vdp_ps_vs_bc.png"
+    ],
+    "status": "available"
+  },
+  "fig4_hierarchical_latent_space.png": {
+    "type": "select_best",
+    "description": "VdP PS latent space (z_H and z_L) showing hierarchical organization",
+    "sources": [
+      "experiments/vanderpol_ps_*/analysis/latent_space_analysis.png"
+    ],
+    "status": "available"
+  },
+  "fig5_rocket_landing.png": {
+    "type": "composite",
+    "description": "Rocket landing PS refinement",
+    "sources": [],
+    "status": "TODO - rocket landing experiments not yet run"
+  },
+  "fig6_performance_summary.png": {
+    "type": "generate",
+    "description": "PS performance vs optimal baseline with BC reference",
+    "sources": [
+      "experiments/comparison/phase4_comparison_report.md",
+      "robustness/robustness_stats.json"
+    ],
+    "status": "needs generation script"
+  },
+  "fig7_refinement_strategy.png": {
+    "type": "select_best",
+    "description": "Spatial + hierarchical refinement visualization",
+    "sources": [
+      "experiments/vanderpol_ps_*/analysis/refinement_strategy.png"
+    ],
+    "status": "available"
+  },
+  "fig8_robustness_ablation.png": {
+    "type": "composite",
+    "description": "Multi-seed robustness and lambda sweep results",
+    "sources": [
+      "robustness/robustness_comparison.png",
+      "ablation_lambda/lambda_analysis/lambda_sweep.png"
+    ],
+    "status": "available - needs combining"
+  }
+}
