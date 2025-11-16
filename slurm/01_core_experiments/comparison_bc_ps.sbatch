@@ -45,7 +45,7 @@ echo ""
 # ============================================================================
 # 2. Configuration
 # ============================================================================
-EXPERIMENTS_DIR="outputs/phase4"
+EXPERIMENTS_DIR="outputs/experiments"
 COMPARISON_OUTPUT="outputs/experiments/comparison"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
