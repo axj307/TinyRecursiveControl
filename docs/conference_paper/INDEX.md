@@ -273,6 +273,29 @@ Before submitting your conference paper:
 
 ---
 
+---
+
+## 🔬 Additional Analysis Figures Available
+
+Beyond the 8 main conference figures, **22 advanced planning analysis figures** exist:
+- **Double Integrator**: 11 interpretability visualizations
+- **Van der Pol**: 11 interpretability visualizations
+- **Total**: 22 figures analyzing hierarchical reasoning (z_H vs z_L)
+
+**See**: `ANALYSIS_FIGURES_AVAILABLE.md` for complete inventory and usage recommendations
+
+**Levels**:
+- Level 1 (3 figs/problem): Basic understanding - what changes during refinement
+- Level 2 (3 figs/problem): Latent space - how the model thinks
+- Level 3 (5 figs/problem): Hierarchical - strategic vs tactical separation
+
+**Usage**:
+- Main paper: Select 1-2 key analysis figures for interpretability
+- Supplementary: Include all 22 figures for comprehensive documentation
+- Comparisons: Create DI vs VdP composites showing linear vs nonlinear
+
+---
+
 **Last Updated**: 2025-11-16
 **Next Review**: When additional figures become available
 

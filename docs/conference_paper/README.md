@@ -279,11 +279,19 @@ If `organize_figures.py` reports missing sources:
 - Core experiments: `../../outputs/experiments/`
   - DI BC: `double_integrator_bc_*`
   - DI PS: `double_integrator_ps_*`
+    - **Planning analysis**: `double_integrator_ps_*/planning_analysis/` (11 figures)
   - VdP BC: `vanderpol_bc_*`
   - VdP PS: `vanderpol_ps_*`
+    - **Planning analysis**: `vanderpol_ps_*/planning_analysis/` (11 figures)
 - Comparison: `../../outputs/experiments/comparison/`
 - Robustness: `../../outputs/robustness/`
 - Lambda ablation: `../../outputs/ablation_lambda/`
+
+### Advanced Analysis Figures (22 total)
+- **Double Integrator interpretability**: 11 figures in `double_integrator_ps_*/planning_analysis/`
+- **Van der Pol interpretability**: 11 figures in `vanderpol_ps_*/planning_analysis/`
+- **Documentation**: See `ANALYSIS_FIGURES_AVAILABLE.md` for complete inventory
+- **Generation script**: `../../scripts/visualize_planning.py`
 
 ### Analysis Scripts (Generate Source Figures)
 - `../../scripts/compare_bc_ps.py` → comparison figures

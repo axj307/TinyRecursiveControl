@@ -263,5 +263,29 @@ This workspace is complete when:
 
 ---
 
+## Additional Resources
+
+### Advanced Planning Analysis (22 figures)
+
+Beyond the 8 conference figures, comprehensive interpretability analysis exists:
+
+**Double Integrator**: 11 planning analysis figures
+- Location: `../../outputs/experiments/double_integrator_ps_*/planning_analysis/`
+- Documentation: `../../outputs/experiments/double_integrator_ps_*/planning_analysis/ANALYSIS_SUMMARY.md`
+- Key figures: Latent clustering, hierarchical PCA, dimension specialization
+
+**Van der Pol**: 11 planning analysis figures
+- Location: `../../outputs/experiments/vanderpol_ps_*/planning_analysis/`
+- Key figures: Same 11 figures as DI for comparison
+
+**Complete Inventory**: See `ANALYSIS_FIGURES_AVAILABLE.md` in this directory
+
+**Usage for Paper**:
+- Supplementary material: Include all 22 figures
+- Main paper: Select 1-2 for interpretability story
+- Comparisons: Create DI vs VdP composites
+
+---
+
 Last updated: 2025-11-16
 Next review: When analysis scripts available or rocket experiments complete
