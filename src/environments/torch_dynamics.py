@@ -202,6 +202,7 @@ def simulate_rocket_landing_torch(
     initial_state: torch.Tensor,
     controls: torch.Tensor,
     Isp: float = 300.0,
+    g: float = 3.71,
     g0: float = 9.81,
     dt: float = 0.5
 ) -> torch.Tensor:
@@ -210,7 +211,7 @@ def simulate_rocket_landing_torch(
 
     Dynamics:
         dr/dt = v                           # position derivative
-        dv/dt = T/m + g                     # velocity derivative (Newton's 2nd law)
+        dv/dt = T/m + g_vec                 # velocity derivative (Newton's 2nd law)
         dm/dt = -||T|| / (Isp * g0)         # mass derivative (fuel consumption)
 
     Where:
@@ -218,9 +219,14 @@ def simulate_rocket_landing_torch(
         - v = [vx, vy, vz]: 3D velocity (m/s)
         - m: mass (kg)
         - T = [Tx, Ty, Tz]: 3D thrust vector (N)
-        - g = [0, 0, -9.81]: gravity vector (m/s^2)
+        - g_vec = [0, 0, -g]: gravity vector using surface gravity (m/s^2)
+        - g: surface gravity (Mars: 3.71, Earth: 9.81, Moon: 1.62) (m/s^2)
         - Isp: specific impulse (s)
-        - g0: standard gravity for Isp calculation (m/s^2)
+        - g0: standard Earth gravity for Isp calculation (always 9.81) (m/s^2)
+
+    IMPORTANT: g and g0 serve different purposes!
+        - g: Actual surface gravity for dynamics (planet-specific)
+        - g0: Standard gravity constant for Isp formula (always 9.81, aerospace standard)
 
     Uses RK4 integration for accuracy and soft constraints to maintain:
         - Altitude z >= 0 (ground collision)
@@ -234,7 +240,8 @@ def simulate_rocket_landing_torch(
         controls: Control sequence [batch_size, horizon, 3] or [horizon, 3]
                  Control: [Tx, Ty, Tz] thrust vector
         Isp: Specific impulse (s, default: 300.0)
-        g0: Standard gravity (m/s^2, default: 9.81)
+        g: Surface gravity (m/s^2, default: 3.71 for Mars)
+        g0: Standard Earth gravity for Isp (m/s^2, default: 9.81, always use 9.81)
         dt: Time step (default: 0.5s)
 
     Returns:
@@ -245,12 +252,12 @@ def simulate_rocket_landing_torch(
         This is essential for gradient-based optimization in process supervision.
 
     Example:
-        >>> # Initial state: 1000m altitude, descending at 50 m/s, 1000kg mass
+        >>> # Mars landing: 1000m altitude, descending at 50 m/s, 1000kg mass
         >>> initial = torch.tensor([[0., 0., 1000., 0., 0., -50., 1000.]])
         >>> # Apply constant upward thrust to slow descent
         >>> controls = torch.ones(1, 50, 3) * torch.tensor([0., 0., 10000.])
-        >>> states = simulate_rocket_landing_torch(initial, controls, dt=0.5)
-        >>> # Rocket should land safely
+        >>> states = simulate_rocket_landing_torch(initial, controls, g=3.71, g0=9.81, dt=0.5)
+        >>> # Rocket should land safely on Mars
     """
     # Handle both batched and single trajectories
     if len(initial_state.shape) == 1:
@@ -269,10 +276,10 @@ def simulate_rocket_landing_torch(
     states = torch.zeros(batch_size, horizon + 1, 7, device=device, dtype=dtype)
     states[:, 0] = initial_state
 
-    # Gravity vector
-    g_vec = torch.tensor([0.0, 0.0, -g0], device=device, dtype=dtype)
+    # Gravity vector (uses actual surface gravity for dynamics)
+    g_vec = torch.tensor([0.0, 0.0, -g], device=device, dtype=dtype)
 
-    # Fuel consumption rate
+    # Fuel consumption rate (uses standard gravity g0 for Isp formula)
     alpha = 1.0 / (Isp * g0)
 
     # RK4 integration

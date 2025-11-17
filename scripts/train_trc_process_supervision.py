@@ -61,6 +61,7 @@ from src.environments import get_problem
 from src.environments.torch_dynamics import (
     simulate_double_integrator_torch,
     simulate_vanderpol_torch as simulate_vdp_torch,
+    simulate_rocket_landing_torch,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -119,12 +120,28 @@ def create_dynamics_function(problem):
             )
         return dynamics_fn
 
+    elif problem_name == "RocketLanding":
+        # Use differentiable PyTorch simulator for Rocket Landing
+        # Extract Mars surface gravity from problem.g (which is [0, 0, -3.71])
+        g_magnitude = float(np.abs(problem.g[2]))  # 3.71 m/s² for Mars
+
+        def dynamics_fn(initial_state, controls):
+            return simulate_rocket_landing_torch(
+                initial_state=initial_state,
+                controls=controls,
+                Isp=problem.Isp,
+                g=g_magnitude,      # Surface gravity (3.71 for Mars)
+                g0=problem.g0,      # Standard gravity for Isp (always 9.81)
+                dt=problem.dt,
+            )
+        return dynamics_fn
+
     else:
         # For other problems, would need to implement differentiable simulators
         raise NotImplementedError(
             f"Process supervision requires differentiable dynamics. "
             f"Problem '{problem_name}' doesn't have a differentiable simulator yet. "
-            f"Currently supported: DoubleIntegrator, VanderpolOscillator"
+            f"Currently supported: DoubleIntegrator, VanderpolOscillator, RocketLanding"
         )
 
 
@@ -221,6 +238,8 @@ def main():
                        help='Time step (if not specified, use problem default)')
     parser.add_argument('--horizon', type=int, default=None,
                        help='Control horizon (if not specified, infer from data)')
+    parser.add_argument('--control_bounds', type=float, default=None,
+                       help='Control bounds (max absolute value). If not specified, uses factory default (4.0)')
 
     args = parser.parse_args()
 
@@ -274,28 +293,29 @@ def main():
 
     # Create model
     logger.info(f"\nCreating model...")
+
+    # Prepare model creation kwargs
+    model_kwargs = {
+        'state_dim': state_dim,
+        'control_dim': control_dim,
+        'control_horizon': horizon,
+    }
+
+    # Add control_bounds if specified
+    if args.control_bounds is not None:
+        model_kwargs['control_bounds'] = args.control_bounds
+        logger.info(f"  Control bounds: {args.control_bounds}")
+
     if args.use_two_level:
         logger.info(f"  Architecture: Two-level (z_H/z_L)")
         logger.info(f"  H_cycles: {args.H_cycles}, L_cycles: {args.L_cycles}")
 
         if args.model_size == 'small':
-            model = TinyRecursiveControl.create_two_level_small(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_two_level_small(**model_kwargs)
         elif args.model_size == 'medium':
-            model = TinyRecursiveControl.create_two_level_medium(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_two_level_medium(**model_kwargs)
         else:  # large
-            model = TinyRecursiveControl.create_two_level_large(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_two_level_large(**model_kwargs)
 
         # Override H_cycles and L_cycles if specified
         if args.H_cycles != 3:
@@ -307,23 +327,11 @@ def main():
         logger.info(f"  Architecture: Single-latent")
 
         if args.model_size == 'small':
-            model = TinyRecursiveControl.create_small(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_small(**model_kwargs)
         elif args.model_size == 'medium':
-            model = TinyRecursiveControl.create_medium(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_medium(**model_kwargs)
         else:  # large
-            model = TinyRecursiveControl.create_large(
-                state_dim=state_dim,
-                control_dim=control_dim,
-                control_horizon=horizon,
-            )
+            model = TinyRecursiveControl.create_large(**model_kwargs)
 
     param_counts = model.get_parameter_count()
     logger.info(f"  Parameters: {param_counts['total']:,}")
