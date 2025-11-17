@@ -124,9 +124,13 @@ def load_test_data(data_path: str, num_samples: int = 100):
     return initial_states, target_states, optimal_controls
 
 
-def extract_planning_data(model, problem, initial_states, target_states, device='cpu'):
+def extract_planning_data(model, problem, initial_states, target_states, device='cpu', norm_stats=None):
     """
     Extract all planning information from model.
+
+    Args:
+        norm_stats: Optional dict with 'state_mean', 'state_std', 'control_mean', 'control_std'
+                   for denormalizing model outputs to real physical units
 
     Returns:
         Dict containing:
@@ -152,6 +156,32 @@ def extract_planning_data(model, problem, initial_states, target_states, device=
 
     all_controls = outputs['all_controls']  # [batch, num_iters, horizon, control_dim]
     all_latents = outputs['all_latents']    # [batch, num_iters, latent_dim]
+
+    # Denormalize controls and states if normalization stats provided
+    if norm_stats is not None:
+        logger.info("Denormalizing controls and states to real physical units...")
+
+        # Extract normalization parameters
+        control_mean = torch.tensor(norm_stats['control_mean'], dtype=torch.float32, device=device)
+        control_std = torch.tensor(norm_stats['control_std'], dtype=torch.float32, device=device)
+        state_mean = torch.tensor(norm_stats['state_mean'], dtype=torch.float32, device=device)
+        state_std = torch.tensor(norm_stats['state_std'], dtype=torch.float32, device=device)
+
+        logger.info(f"  Control mean: {control_mean.cpu().numpy()}")
+        logger.info(f"  Control std: {control_std.cpu().numpy()}")
+
+        # Denormalize controls: [batch, num_iters, horizon, control_dim]
+        # Broadcast: control_mean/std should be [control_dim], all_controls is [batch, iters, horizon, control_dim]
+        all_controls = all_controls * control_std.view(1, 1, 1, -1) + control_mean.view(1, 1, 1, -1)
+
+        # Denormalize states: [batch, state_dim]
+        initial_states = initial_states * state_std + state_mean
+        target_states = target_states * state_std + state_mean
+
+        logger.info("✓ Denormalization complete")
+    else:
+        logger.warning("⚠ No normalization stats provided - using raw model outputs!")
+        logger.warning("  This may cause incorrect trajectory simulations if data was normalized during training.")
 
     # Extract z_L states if available (two-level architecture)
     all_z_L_states = outputs.get('all_z_L_states', None)
@@ -227,6 +257,7 @@ def plot_control_evolution(planning_data: Dict, output_path: Path, num_examples:
     """
     Visualize how control sequences evolve across iterations.
     Shows side-by-side plots for multiple examples.
+    Handles multi-dimensional controls (1D, 2D, 3D).
     """
     logger.info("Creating control evolution visualization...")
 
@@ -234,6 +265,9 @@ def plot_control_evolution(planning_data: Dict, output_path: Path, num_examples:
     costs = planning_data['costs']
     num_iters = planning_data['num_iters']
     horizon = planning_data['horizon']
+    control_dim = all_controls.shape[-1]
+
+    logger.info(f"  Control dimensions: {control_dim}")
 
     # Select examples with different cost profiles
     final_costs = costs[:, -1]
@@ -252,19 +286,41 @@ def plot_control_evolution(planning_data: Dict, output_path: Path, num_examples:
 
     time_steps = np.arange(horizon)
 
+    # Colors and labels for multi-dimensional controls
+    control_colors = ['b', 'r', 'g']
+    control_labels = ['u₁', 'u₂', 'u₃'] if control_dim <= 3 else [f'u_{i+1}' for i in range(control_dim)]
+    if control_dim == 3:
+        control_labels = ['Tx', 'Ty', 'Tz']  # For rocket landing
+
     for row_idx, sample_idx in enumerate(example_indices):
         for iter_idx in range(num_iters):
             ax = axes[row_idx, iter_idx]
 
-            controls = all_controls[sample_idx, iter_idx, :, 0].cpu().numpy()
+            # Plot all control dimensions
+            if control_dim == 1:
+                # 1D control - single line
+                controls = all_controls[sample_idx, iter_idx, :, 0].cpu().numpy()
+                ax.plot(time_steps, controls, 'b-', linewidth=2, alpha=0.8, label='Control')
+            else:
+                # Multi-dimensional control - plot each dimension
+                for ctrl_idx in range(min(control_dim, 3)):  # Plot up to 3 dimensions
+                    controls = all_controls[sample_idx, iter_idx, :, ctrl_idx].cpu().numpy()
+                    ax.plot(time_steps, controls,
+                           color=control_colors[ctrl_idx],
+                           linewidth=1.5, alpha=0.7,
+                           label=control_labels[ctrl_idx])
+
             cost = costs[sample_idx, iter_idx].item()
 
-            ax.plot(time_steps, controls, 'b-', linewidth=2, alpha=0.8)
             ax.axhline(y=0, color='k', linestyle='--', linewidth=0.5, alpha=0.3)
             ax.set_xlabel('Time Step', fontsize=9)
             ax.set_ylabel('Control', fontsize=9)
             ax.set_title(f'Iter {iter_idx} | Cost: {cost:.2f}', fontsize=10, fontweight='bold')
             ax.grid(True, alpha=0.3)
+
+            # Add legend for multi-dimensional controls (only on first subplot to avoid clutter)
+            if control_dim > 1 and row_idx == 0 and iter_idx == 0:
+                ax.legend(fontsize=8, loc='best')
 
             # Highlight if this is the first or last iteration
             if iter_idx == 0:
@@ -944,6 +1000,8 @@ def main():
     parser.add_argument('--level', type=str, default='all',
                         choices=['all', '1', '2', '3'],
                         help='Visualization level (1=basic, 2=latent, 3=hierarchical, all=everything)')
+    parser.add_argument('--norm_stats', type=str, default=None,
+                        help='Path to normalization statistics JSON file (required for denormalization)')
 
     args = parser.parse_args()
 
@@ -972,9 +1030,22 @@ def main():
         args.test_data, args.num_samples
     )
 
+    # Load normalization stats if provided
+    norm_stats = None
+    if args.norm_stats is not None:
+        norm_stats_path = Path(args.norm_stats)
+        if norm_stats_path.exists():
+            logger.info(f"\nLoading normalization statistics from: {norm_stats_path}")
+            with open(norm_stats_path, 'r') as f:
+                norm_stats = json.load(f)
+            logger.info("✓ Normalization stats loaded")
+        else:
+            logger.warning(f"⚠ Normalization stats file not found: {norm_stats_path}")
+            logger.warning("  Proceeding without denormalization - results may be incorrect!")
+
     # Extract planning data
     planning_data = extract_planning_data(
-        model, problem, initial_states, target_states, device
+        model, problem, initial_states, target_states, device, norm_stats
     )
 
     logger.info("=" * 70)

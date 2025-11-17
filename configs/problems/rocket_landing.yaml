@@ -20,13 +20,13 @@ problem:
 # =============================================================================
 dynamics:
   # Time discretization
-  dt: 0.5           # Time step (0.5s for rocket landing)
-  horizon: 50       # Control horizon (number of steps)
-  total_time: 25.0  # Total time horizon (dt * horizon = 25.0s)
+  dt: 0.5           # Time step (0.5s for rocket landing, but dataset uses variable dt ~1.15s)
+  horizon: 49       # Control horizon (number of control steps, dataset has 50 states)
+  total_time: 24.5  # Total time horizon (dt * horizon = 24.5s nominal)
 
-  # Rocket physical parameters
-  Isp: 300.0        # Specific impulse (seconds) - typical for rocket engines
-                    # Higher Isp = more fuel-efficient (300-450 typical)
+  # Rocket physical parameters (MARS LANDING)
+  Isp: 200.7        # Specific impulse (seconds) - INFERRED FROM DATASET (not generic 300s)
+                    # Mars mission scenario from aerospace-datasets
 
 # =============================================================================
 # State and Control Bounds

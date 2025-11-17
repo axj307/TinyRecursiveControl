@@ -132,6 +132,12 @@ def normalize_data(data, stats, verbose=True):
     if 'costs' in data:
         normalized_data['costs'] = data['costs']
 
+    # Copy timestep_dts if present (time data doesn't need normalization)
+    if 'timestep_dts' in data:
+        normalized_data['timestep_dts'] = data['timestep_dts']
+        if verbose:
+            print(f"  ✓ Preserved timestep_dts: {data['timestep_dts'].shape}")
+
     if verbose:
         print("\n✓ Normalization complete!")
         print(f"\nNormalized data ranges:")

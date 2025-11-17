@@ -90,6 +90,17 @@ def convert_to_trc_format(
 
     n_traj, n_steps, _ = r.shape
 
+    # Compute dt for each timestep transition (variable dt per trajectory)
+    # dt[i, j] = time difference between step j and j+1 for trajectory i
+    timestep_dts = np.diff(t, axis=1)  # [N_traj, N_steps-1]
+
+    print(f"\nTime discretization statistics:")
+    print(f"  Mean dt: {timestep_dts.mean():.6f} s")
+    print(f"  Std dt: {timestep_dts.std():.6f} s")
+    print(f"  Range: [{timestep_dts.min():.6f}, {timestep_dts.max():.6f}] s")
+    constant_dt_count = sum([np.allclose(timestep_dts[i], timestep_dts[i, 0]) for i in range(n_traj)])
+    print(f"  Trajectories with constant dt: {constant_dt_count}/{n_traj} ({constant_dt_count/n_traj*100:.1f}%)")
+
     # Construct full state trajectories: [x, y, z, vx, vy, vz, m]
     # State dim = 7
     state_trajectories = np.zeros((n_traj, n_steps, 7))
@@ -130,6 +141,7 @@ def convert_to_trc_format(
         state_trajectories = state_trajectories[indices]
         control_sequences = control_sequences[indices]
         costs = costs[indices]
+        timestep_dts = timestep_dts[indices]
 
         n_traj = num_samples
 
@@ -150,7 +162,8 @@ def convert_to_trc_format(
         'target_states': target_states[train_indices],
         'state_trajectories': state_trajectories[train_indices],
         'control_sequences': control_sequences[train_indices],
-        'costs': costs[train_indices]
+        'costs': costs[train_indices],
+        'timestep_dts': timestep_dts[train_indices]  # Variable dt per trajectory
     }
 
     # Create test dataset
@@ -159,7 +172,8 @@ def convert_to_trc_format(
         'target_states': target_states[test_indices],
         'state_trajectories': state_trajectories[test_indices],
         'control_sequences': control_sequences[test_indices],
-        'costs': costs[test_indices]
+        'costs': costs[test_indices],
+        'timestep_dts': timestep_dts[test_indices]  # Variable dt per trajectory
     }
 
     return train_data, test_data

@@ -1,12 +1,17 @@
 """
 Rocket Landing Control Problem
 
-3DOF (3 Degrees of Freedom) point-mass rocket landing problem.
+3DOF (3 Degrees of Freedom) point-mass rocket landing problem for MARS landing.
 State: [x, y, z, vx, vy, vz, m] (position, velocity, mass)
 Control: [Tx, Ty, Tz] (3D thrust vector)
-Dynamics: Newtonian mechanics with gravity and variable mass
+Dynamics: Newtonian mechanics with Mars gravity and variable mass
 
 Based on the aerospace-datasets rocket landing dataset with 4,812 optimal trajectories.
+
+IMPORTANT: This dataset uses Mars physics parameters:
+  - Gravity: g = 3.71 m/s² (not Earth's 9.81 m/s²)
+  - Specific impulse: Isp = 200.7 s (inferred from dataset)
+  - Variable time discretization: mean dt ≈ 1.15s per trajectory
 """
 
 import numpy as np
@@ -33,14 +38,14 @@ class RocketLanding(BaseControlProblem):
 
         Dynamics:
             dr/dt = v
-            dv/dt = T/m + g  (where g = [0, 0, -9.81] m/s²)
+            dv/dt = T/m + g  (where g = [0, 0, -3.71] m/s²)
             dm/dt = -||T|| / (Isp * g0)  (fuel consumption)
 
-    Physical Parameters:
-        - g: Gravitational acceleration [0, 0, -9.81] m/s²
-        - g0: Standard gravity (9.81 m/s² for Isp calculation)
-        - Isp: Specific impulse (typical: 300-450s for rocket engines)
-        - alpha: Fuel consumption rate (1 / (Isp * g0))
+    Physical Parameters (Mars Landing):
+        - g: Mars gravitational acceleration [0, 0, -3.71] m/s²
+        - g0: Standard Earth gravity (9.81 m/s² for Isp calculation)
+        - Isp: Specific impulse = 200.7s (inferred from aerospace-datasets)
+        - alpha: Fuel consumption rate (1 / (Isp * g0)) ≈ 0.000508
 
     Objective:
         Land at origin (0, 0, 0) with minimal fuel consumption and soft landing
@@ -50,7 +55,7 @@ class RocketLanding(BaseControlProblem):
         self,
         dt: float = 0.5,
         horizon: int = 50,
-        Isp: float = 300.0,
+        Isp: float = 200.7,
         initial_state_bounds: Tuple = None,
         Q: np.ndarray = None,
         R: float = 0.001,
@@ -60,9 +65,9 @@ class RocketLanding(BaseControlProblem):
         Initialize rocket landing problem.
 
         Args:
-            dt: Time step (discretization). Suggested: 0.5s for rocket landing
-            horizon: Control horizon (number of timesteps)
-            Isp: Specific impulse in seconds (300-450 typical for rockets)
+            dt: Time step (discretization). Note: aerospace-datasets uses variable dt ≈ 1.15s
+            horizon: Control horizon (number of timesteps, dataset uses 50)
+            Isp: Specific impulse in seconds (default 200.7s matches aerospace-datasets)
             initial_state_bounds: Tuple of (lower, upper) arrays for initial state sampling
                                   If None, uses dataset-based bounds
             Q: State cost matrix [7, 7] (default: emphasize position and velocity at landing)
@@ -71,9 +76,9 @@ class RocketLanding(BaseControlProblem):
         """
         super().__init__(dt=dt, horizon=horizon, name="rocket_landing")
 
-        # Physical parameters
-        self.g = np.array([0.0, 0.0, -9.81])  # Gravitational acceleration
-        self.g0 = 9.81  # Standard gravity for Isp calculation
+        # Physical parameters (Mars landing scenario)
+        self.g = np.array([0.0, 0.0, -3.71])  # Mars gravitational acceleration
+        self.g0 = 9.81  # Standard Earth gravity for Isp calculation
         self.Isp = Isp  # Specific impulse
         self.alpha = 1.0 / (self.Isp * self.g0)  # Fuel consumption rate
 
@@ -252,6 +257,76 @@ class RocketLanding(BaseControlProblem):
         k4 = dynamics(state + self.dt * k3, control)
 
         next_state = state + (self.dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+
+        # Enforce physical constraints
+        # Altitude cannot be negative (ground contact)
+        next_state[2] = max(next_state[2], 0.0)
+
+        # Mass cannot be negative (ran out of fuel)
+        next_state[6] = max(next_state[6], 100.0)  # Empty mass ~100kg
+
+        return next_state
+
+    def simulate_step_variable_dt(self, state: np.ndarray, control: np.ndarray, dt: float) -> np.ndarray:
+        """
+        Simulate one timestep with custom time discretization.
+
+        This allows using the exact dt from the aerospace-datasets which has
+        variable time discretization per trajectory.
+
+        Args:
+            state: Current state [x, y, z, vx, vy, vz, m]
+            control: Thrust vector [Tx, Ty, Tz]
+            dt: Time step for this specific transition (seconds)
+
+        Returns:
+            next_state: Next state [x, y, z, vx, vy, vz, m]
+        """
+        def dynamics(s: np.ndarray, u: np.ndarray) -> np.ndarray:
+            """
+            Compute state derivatives for rocket landing.
+
+            Args:
+                s: State [x, y, z, vx, vy, vz, m]
+                u: Control [Tx, Ty, Tz]
+
+            Returns:
+                State derivatives [dx/dt, dy/dt, dz/dt, dvx/dt, dvy/dt, dvz/dt, dm/dt]
+            """
+            # Extract state components
+            r = s[0:3]  # position
+            v = s[3:6]  # velocity
+            m = s[6]    # mass
+
+            # Thrust vector
+            T = u
+
+            # Position derivative: dr/dt = v
+            dr_dt = v
+
+            # Velocity derivative: dv/dt = T/m + g
+            # Prevent division by very small mass
+            m_safe = max(m, 100.0)
+            dv_dt = T / m_safe + self.g
+
+            # Mass derivative: dm/dt = -||T|| / (Isp * g0)
+            # Fuel consumption proportional to thrust magnitude
+            thrust_mag = np.linalg.norm(T)
+            dm_dt = -self.alpha * thrust_mag
+
+            return np.array([
+                dr_dt[0], dr_dt[1], dr_dt[2],
+                dv_dt[0], dv_dt[1], dv_dt[2],
+                dm_dt
+            ])
+
+        # RK4 integration with custom dt
+        k1 = dynamics(state, control)
+        k2 = dynamics(state + 0.5 * dt * k1, control)
+        k3 = dynamics(state + 0.5 * dt * k2, control)
+        k4 = dynamics(state + dt * k3, control)
+
+        next_state = state + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
 
         # Enforce physical constraints
         # Altitude cannot be negative (ground contact)
