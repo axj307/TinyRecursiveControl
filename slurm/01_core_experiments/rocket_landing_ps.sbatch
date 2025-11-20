@@ -133,7 +133,6 @@ python scripts/train_trc_process_supervision.py \
     --batch_size "${BATCH_SIZE}" \
     --lr "${LEARNING_RATE}" \
     --process_weight "${PROCESS_WEIGHT}" \
-    --control_bounds 15000.0 \
     --output_dir "${OUTPUT_DIR}/training" \
     --scheduler cosine \
     --patience 20 \

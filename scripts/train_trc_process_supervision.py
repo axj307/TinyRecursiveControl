@@ -45,6 +45,7 @@ import random
 import argparse
 import sys
 import logging
+import json
 from pathlib import Path
 
 # Add parent directory to path
@@ -385,6 +386,14 @@ def main():
         value_weight=args.value_weight if value_predictor is not None else 0.0,
         cost_params=cost_params,
     )
+
+    # Save config for future reference and correct model loading
+    logger.info(f"\nSaving model configuration...")
+    config_dict = vars(trained_model.config)
+    config_path = Path(args.output_dir) / 'config.json'
+    with open(config_path, 'w') as f:
+        json.dump(config_dict, f, indent=2)
+    logger.info(f"✓ Config saved to {config_path}")
 
     logger.info("\n✓ Training complete! Next steps:")
     logger.info(f"  1. Evaluate: python src/evaluation/evaluator.py --checkpoint {args.output_dir}/best_model.pt")

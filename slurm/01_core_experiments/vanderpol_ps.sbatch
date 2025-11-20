@@ -60,9 +60,9 @@ TEST_DATA="data/${PROBLEM}/${PROBLEM}_dataset_test.npz"
 
 # Training hyperparameters
 EPOCHS=50
-BATCH_SIZE=32
+BATCH_SIZE=64
 LEARNING_RATE=1e-3
-MODEL_SIZE="medium"
+MODEL_SIZE="large"
 PROCESS_WEIGHT=0.1
 
 echo "Configuration:"

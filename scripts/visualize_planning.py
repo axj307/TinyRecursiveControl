@@ -59,6 +59,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
         latent_dim = 128  # default
         state_dim = 2  # default
         control_horizon = 100  # default
+        control_dim = 1  # default
 
         # Try to infer from actual keys
         if 'state_encoder.encoder.3.weight' in state_dict:
@@ -67,16 +68,33 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
             input_size = state_dict['state_encoder.encoder.0.weight'].shape[1]
             state_dim = (input_size - 1) // 2
         if 'control_decoder.decoder.3.bias' in state_dict:
-            control_horizon = state_dict['control_decoder.decoder.3.bias'].shape[0]
+            control_horizon_flat = state_dict['control_decoder.decoder.3.bias'].shape[0]
+
+            # Infer control_dim from state_dim
+            # For common problems: state_dim=2 → control_dim=1, state_dim=7 → control_dim=3
+            if state_dim == 2:
+                control_dim = 1
+                control_horizon = control_horizon_flat
+            elif state_dim == 7:  # Rocket landing
+                control_dim = 3
+                control_horizon = control_horizon_flat // control_dim
+            else:
+                # General case: try to infer from control_horizon
+                # Assume control_dim divides control_horizon_flat evenly
+                for cd in [1, 2, 3, 4]:
+                    if control_horizon_flat % cd == 0:
+                        control_dim = cd
+                        control_horizon = control_horizon_flat // cd
+                        break
 
         logger.info(f"  Architecture: {'Two-level' if is_two_level else 'Single-latent'}")
-        logger.info(f"  Dimensions: state={state_dim}, latent={latent_dim}, control_horizon={control_horizon}")
+        logger.info(f"  Dimensions: state={state_dim}, control={control_dim}, latent={latent_dim}, control_horizon={control_horizon}")
 
         if is_two_level:
             # Create two-level model
             config = TRCConfig(
                 state_dim=state_dim,
-                control_dim=1,
+                control_dim=control_dim,
                 latent_dim=latent_dim,
                 control_horizon=control_horizon,
                 use_two_level=True,
@@ -87,7 +105,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
             # Create single-latent model
             config = TRCConfig(
                 state_dim=state_dim,
-                control_dim=1,
+                control_dim=control_dim,
                 latent_dim=latent_dim,
                 control_horizon=control_horizon,
                 use_two_level=False,
@@ -421,7 +439,7 @@ def plot_residual_heatmaps(planning_data: Dict, output_path: Path, num_examples:
     horizon = planning_data['horizon']
 
     # Compute residuals (changes between iterations)
-    residuals = all_controls[:, 1:, :, :] - all_controls[:, :-1, :, :]  # [batch, num_iters-1, horizon, 1]
+    residuals = all_controls[:, 1:, :, :] - all_controls[:, :-1, :, :]  # [batch, num_iters-1, horizon, control_dim]
 
     # Select diverse examples
     final_costs = costs[:, -1]
@@ -437,7 +455,8 @@ def plot_residual_heatmaps(planning_data: Dict, output_path: Path, num_examples:
         ax = axes[idx]
 
         # Residuals for this sample: [num_iters-1, horizon]
-        sample_residuals = residuals[sample_idx, :, :, 0].cpu().numpy()
+        # Compute L2 norm across all control dimensions
+        sample_residuals = torch.norm(residuals[sample_idx, :, :, :], dim=-1).cpu().numpy()
 
         # Create heatmap
         im = ax.imshow(sample_residuals.T, aspect='auto', cmap='RdBu_r',
@@ -952,7 +971,9 @@ def plot_hierarchical_pca(planning_data: Dict, output_path: Path):
     # Plot 2: z_L states (colored by H_cycle, different markers for L_cycles)
     ax = axes[1]
     colors_L = plt.cm.plasma(np.linspace(0, 1, H_cycles))
-    markers = ['v', 's', 'D', '^'][:L_cycles]
+    # Extended marker list to support variable L_cycles (up to 8+ cycles)
+    base_markers = ['v', 's', 'D', '^', 'o', 'X', 'P', '*']
+    markers = [base_markers[i % len(base_markers)] for i in range(L_cycles)]
 
     for H_idx in range(H_cycles):
         for L_idx in range(L_cycles):

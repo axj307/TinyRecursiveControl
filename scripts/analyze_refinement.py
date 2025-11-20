@@ -26,6 +26,7 @@ import numpy as np
 import argparse
 import sys
 import logging
+import json
 from pathlib import Path
 
 # Add parent directory to path
@@ -84,58 +85,133 @@ def load_model(checkpoint_path, device='cpu'):
     else:
         state_dict = checkpoint
 
-    # Infer model architecture and dimensions from state dict
+    # Try to load config.json from checkpoint directory
+    checkpoint_path = Path(checkpoint_path)
+    config_path = checkpoint_path.parent / 'config.json'
+    config = None
+
+    if config_path.exists():
+        logger.info(f"Loading configuration from {config_path}")
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    else:
+        logger.info("No config.json found, using dimension-based detection")
+
+    # Infer model architecture and dimensions
     logger.info("Detecting model architecture from checkpoint...")
 
     # Detect architecture type (two-level vs single-latent)
     is_two_level = 'recursive_reasoning.H_init' in state_dict or 'recursive_reasoning.L_init' in state_dict
 
-    # Infer dimensions from actual keys in checkpoint
-    # State encoder structure: encoder.0 (input) -> ... -> encoder.3 (output to latent)
-    if 'state_encoder.encoder.3.weight' in state_dict:
-        latent_dim = state_dict['state_encoder.encoder.3.weight'].shape[0]
-    elif 'state_encoder.out_projection.weight' in state_dict:
-        latent_dim = state_dict['state_encoder.out_projection.weight'].shape[0]
-    else:
-        latent_dim = 128  # Default
+    if config:
+        # Use config.json if available
+        state_dim = config.get('state_dim', 2)
+        control_dim = config.get('control_dim', 1)
+        latent_dim = config.get('latent_dim', 128)
+        hidden_dim = config.get('hidden_dim', 256)
+        horizon = config.get('control_horizon', 100)
 
-    # Infer state_dim from state encoder input
-    # Input is [current_state, target_state, time_remaining?] = state_dim * 2 + extras
-    if 'state_encoder.encoder.0.weight' in state_dict:
-        input_size = state_dict['state_encoder.encoder.0.weight'].shape[1]
-        state_dim = (input_size - 1) // 2  # Subtract 1 for time, divide by 2 for current+target
+        # Detect model size from dimensions if not explicitly stored
+        if 'model_size' in config:
+            model_size = config['model_size']
+        else:
+            # Infer from latent_dim and hidden_dim
+            if latent_dim == 64 and hidden_dim == 128:
+                model_size = 'small'
+            elif latent_dim == 128 and hidden_dim == 256:
+                model_size = 'medium'
+            elif latent_dim == 256 and hidden_dim == 512:
+                model_size = 'large'
+            else:
+                logger.warning(f"Unknown dimension pair (latent={latent_dim}, hidden={hidden_dim}), defaulting to medium")
+                model_size = 'medium'
     else:
-        state_dim = 2  # Default
+        # Fall back to dimension-based detection
 
-    control_dim = 1  # Assume 1D control for Van der Pol
+        # Infer latent_dim from state encoder output
+        if 'state_encoder.encoder.3.weight' in state_dict:
+            latent_dim = state_dict['state_encoder.encoder.3.weight'].shape[0]
+        elif 'state_encoder.out_projection.weight' in state_dict:
+            latent_dim = state_dict['state_encoder.out_projection.weight'].shape[0]
+        else:
+            latent_dim = 128  # Default
 
-    # Infer horizon from decoder output size
-    if 'control_decoder.decoder.3.bias' in state_dict:
-        horizon = state_dict['control_decoder.decoder.3.bias'].shape[0]
-    elif 'initial_control_generator.decoder.3.bias' in state_dict:
-        horizon = state_dict['initial_control_generator.decoder.3.bias'].shape[0]
-    else:
-        horizon = 100  # Default fallback
+        # Infer hidden_dim from state encoder first layer
+        if 'state_encoder.encoder.0.weight' in state_dict:
+            hidden_dim = state_dict['state_encoder.encoder.0.weight'].shape[0]
+            input_size = state_dict['state_encoder.encoder.0.weight'].shape[1]
+            state_dim = (input_size - 1) // 2  # Subtract 1 for time, divide by 2 for current+target
+        else:
+            hidden_dim = 256  # Default
+            state_dim = 2  # Default
+
+        control_dim = 1  # Assume 1D control
+
+        # Infer horizon from decoder output size
+        if 'control_decoder.decoder.3.bias' in state_dict:
+            horizon = state_dict['control_decoder.decoder.3.bias'].shape[0]
+        elif 'initial_control_generator.decoder.3.bias' in state_dict:
+            horizon = state_dict['initial_control_generator.decoder.3.bias'].shape[0]
+        else:
+            horizon = 100  # Default fallback
+
+        # Detect model size from dimension pair
+        if latent_dim == 64 and hidden_dim == 128:
+            model_size = 'small'
+        elif latent_dim == 128 and hidden_dim == 256:
+            model_size = 'medium'
+        elif latent_dim == 256 and hidden_dim == 512:
+            model_size = 'large'
+        else:
+            logger.warning(f"Unknown dimension pair (latent={latent_dim}, hidden={hidden_dim}), defaulting to medium")
+            model_size = 'medium'
 
     logger.info(f"  Architecture: {'Two-level' if is_two_level else 'Single-latent'}")
+    logger.info(f"  Model size: {model_size}")
     logger.info(f"  State dim: {state_dim}, Control dim: {control_dim}")
     logger.info(f"  Latent dim: {latent_dim}, Horizon: {horizon}")
 
     # Create matching model architecture
     if is_two_level:
         logger.info("Creating two-level model...")
-        model = TinyRecursiveControl.create_two_level_medium(
-            state_dim=state_dim,
-            control_dim=control_dim,
-            control_horizon=horizon,
-        )
+        if model_size == 'small':
+            model = TinyRecursiveControl.create_two_level_small(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+        elif model_size == 'large':
+            model = TinyRecursiveControl.create_two_level_large(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+        else:  # medium
+            model = TinyRecursiveControl.create_two_level_medium(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
     else:
         logger.info("Creating single-latent model...")
-        model = TinyRecursiveControl.create_medium(
-            state_dim=state_dim,
-            control_dim=control_dim,
-            control_horizon=horizon,
-        )
+        if model_size == 'small':
+            model = TinyRecursiveControl.create_small(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+        elif model_size == 'large':
+            model = TinyRecursiveControl.create_large(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
+        else:  # medium
+            model = TinyRecursiveControl.create_medium(
+                state_dim=state_dim,
+                control_dim=control_dim,
+                control_horizon=horizon,
+            )
 
     # Load state dict
     model.load_state_dict(state_dict)
